@@ -1,4 +1,6 @@
-// Text summarization service using HuggingFace's API
+// Text summarization service with AI enhancement
+import aiService from './aiService';
+
 class SummarizationService {
   constructor() {
     // Initialize with your HuggingFace API token
@@ -15,151 +17,235 @@ class SummarizationService {
     }
 
     try {
-      console.log('📝 Starting text summarization using AI...');
+      console.log('📝 Starting AI-enhanced text summarization...');
+      
+      // Check text length and determine if chunking is needed
+      const charCount = text.length;
+      const tokenEstimate = Math.ceil(charCount / 4);
+      
+      console.log(`📊 Document size: ${charCount} chars, ~${tokenEstimate} tokens`);
+      
+      if (tokenEstimate > 30000) {
+        // Large document: use chunking
+        console.log('📦 Large document detected, using chunked processing');
+        return await this.summarizeLargeDocument(text);
+      }
+      
+      // Small document: direct AI call
+      console.log('✨ Processing with Gemini AI...');
+      const prompt = `You are an expert educational content analyzer. Analyze this document and create a COMPREHENSIVE, DETAILED, LONG summary.
 
-      // Function to structure the text better before summarization
-      const prepareText = (text) => {
-        // Split into paragraphs and clean them
-        const paragraphs = text.split(/\n\s*\n/)
-          .map(p => p.trim())
-          .filter(p => p.length > 0);
+=== DOCUMENT TO ANALYZE ===
+${text.substring(0, 30000)}
 
-        // Identify potential sections and headers
-        const structuredText = paragraphs.map(p => {
-          if (p.length < 50 && p.toUpperCase() === p) {
-            return `\n## ${p}\n`; // Mark as header
-          }
-          return p;
-        }).join('\n\n');
+=== REQUIRED OUTPUT FORMAT ===
+Provide a DETAILED and COMPREHENSIVE summary. DO NOT make it short. Include as much relevant information as possible.
 
-        return structuredText;
-      };
+# 📚 Document Summary
 
-      // Clean and structure the input text
-      const preparedText = prepareText(text);
+## 🎯 Main Topic
+[Write 3-5 detailed paragraphs explaining what this document is about, its context, background, and primary purpose. Be thorough and comprehensive.]
 
-      // For development/testing, use a simulated AI response
-      // In production, replace this with actual API call
-      const simulateAIResponse = async (text) => {
-        // Enhanced analysis for comprehensive summarization
-        const sections = text.split('##').filter(s => s.trim());
-        const mainPoints = [];
-        const keyFindings = new Set();
-        const concepts = new Set();
-        const definitions = new Set();
-        const relationships = new Set();
-        const examples = new Set();
+## 🔑 Key Concepts
+[List and explain 8-12 most important concepts or ideas. For EACH concept, provide:
+- **Concept Name:** [2-3 paragraphs of detailed explanation, examples, and significance]
 
-        sections.forEach(section => {
-          const sentences = section.match(/[^.!?]+[.!?]+/g) || [];
-          sentences.forEach(sentence => {
-            // Identify key points
-            if (/important|significant|key|main|crucial|essential/i.test(sentence)) {
-              keyFindings.add(sentence.trim());
-            }
-            // Identify concepts and definitions
-            if (/is defined as|refers to|means|is a|are|represents/i.test(sentence)) {
-              definitions.add(sentence.trim());
-            }
-            // Identify examples
-            if (/for example|such as|like|instance|exemplifies/i.test(sentence)) {
-              examples.add(sentence.trim());
-            }
-            // Identify relationships between concepts
-            if (/relates to|connects|links|affects|influences|depends on/i.test(sentence)) {
-              relationships.add(sentence.trim());
-            }
-          });
-        });
+Be thorough - this should be substantial.]
 
-        // Create a comprehensive structured summary
-        let summary = "# Comprehensive Document Analysis\n\n";
+## 📖 Important Details
+[Write 4-6 comprehensive paragraphs covering:
+- Crucial information and data
+- Definitions and terminology
+- Processes and methodologies  
+- Findings and results
+- Supporting evidence
 
-        // Add overview section
-        summary += "## Overview\n";
-        summary += "This document explores the topic of " + 
-                  (sections[0] || text).substring(0, 150).trim() + 
-                  "...\n\n";
+Provide extensive detail here.]
 
-        // Add key concepts and definitions
-        summary += "## Key Concepts\n\n";
-        Array.from(definitions).slice(0, 8).forEach(def => {
-          summary += "• " + def.trim() + "\n";
-        });
+## 💡 Practical Applications
+[Write 3-4 detailed paragraphs explaining:
+- How this knowledge can be applied in real scenarios
+- Industry applications
+- Use cases and examples
+- Implementation strategies]
 
-        // Add main ideas and arguments
-        summary += "\n## Main Ideas\n\n";
-        Array.from(keyFindings).slice(0, 8).forEach(point => {
-          summary += "• " + point.trim() + "\n";
-        });
+## ✅ Key Takeaways
+[List 10-15 detailed bullet points of the most important things to remember. Each point should be a complete sentence or two.]
 
-        // Add examples and applications
-        summary += "\n## Examples & Applications\n\n";
-        Array.from(examples).slice(0, 5).forEach(example => {
-          summary += "• " + example.trim() + "\n";
-        });
+## 🔬 Additional Insights
+[Write 2-3 more paragraphs covering:
+- Interesting observations
+- Connections to other topics
+- Future implications
+- Expert perspectives]
 
-        // Add relationships and connections
-        summary += "\n## Conceptual Relationships\n\n";
-        Array.from(relationships).slice(0, 5).forEach(rel => {
-          summary += "• " + rel.trim() + "\n";
-        });
+Make this summary COMPREHENSIVE and DETAILED. The longer and more thorough, the better. Use proper markdown formatting.`;
 
-        if (sections.length > 1) {
-          summary += "\n## Detailed Section Analysis\n\n";
-          sections.forEach((section, index) => {
-            if (section.trim()) {
-              const sectionTitle = section.split('\n')[0].trim();
-              summary += `### ${sectionTitle || `Section ${index + 1}`}\n`;
-              const sectionSentences = section.match(/[^.!?]+[.!?]+/g) || [];
-              const keySentences = sectionSentences
-                .filter(s => /important|significant|key|main|concept|define|example/i.test(s))
-                .slice(0, 3);
-              keySentences.forEach(s => summary += "• " + s.trim() + "\n");
-              summary += "\n";
-            }
-          });
-        }
-
-        // Add potential quiz topics
-        summary += "\n## Potential Quiz Topics\n\n";
-        const quizTopics = new Set([
-          ...Array.from(definitions).slice(0, 3),
-          ...Array.from(relationships).slice(0, 2),
-          ...Array.from(examples).slice(0, 2)
-        ]);
-        Array.from(quizTopics).forEach(topic => {
-          summary += "• " + topic.trim() + "\n";
-        });
-
-        // Add conclusions if found
-        const conclusions = text.match(/(?:in conclusion|to summarize|finally)[^.!?]+[.!?]+/gi);
-        if (conclusions) {
-          summary += "\n## Key Takeaways\n\n";
-          conclusions.forEach(conclusion => {
-            summary += "• " + conclusion.trim() + "\n";
-          });
-        }
-
-        return summary;
-      };
-
-      // For now, use the simulated response
-      const summary = await simulateAIResponse(preparedText);
-      console.log('📝 AI Summarization completed');
+      const response = await aiService.generateResponse(prompt, {
+        subject: 'general',
+        complexity: 'intermediate'
+      });
+      
+      console.log('✅ AI summarization completed');
       
       return {
         success: true,
-        summary: summary,
+        summary: response.answer,
+        method: 'ai',
+        confidence: response.confidence,
+        source: response.source
       };
 
     } catch (error) {
       console.error('📝 Summarization error:', error);
       return {
         success: false,
-        error: error.message || 'Failed to generate summary',
+        error: `AI summarization failed: ${error.message}. Please check your Gemini API key and try again.`,
       };
     }
+  }
+
+
+
+  // For large documents: chunk and summarize
+  async summarizeLargeDocument(text) {
+    const chunkSize = 25000; // ~6,250 tokens per chunk
+    const chunks = this.splitIntoChunks(text, chunkSize);
+    
+    console.log(`📄 Processing large document in ${chunks.length} chunks`);
+    
+    const chunkSummaries = [];
+    
+    // Process each chunk
+    for (let i = 0; i < chunks.length; i++) {
+      console.log(`📝 Processing chunk ${i + 1}/${chunks.length}...`);
+      
+      const prompt = `You are analyzing section ${i + 1} of ${chunks.length} from a larger educational document.
+
+=== SECTION CONTENT ===
+${chunks[i]}
+
+=== TASK ===
+Provide a structured summary of this section:
+
+**Main Ideas:**
+[List 2-4 key points from this section]
+
+**Important Details:**
+[Brief overview of crucial information]
+
+**Key Terms:**
+[Any important terminology or concepts]
+
+Be concise but thorough.`;
+
+      const response = await aiService.generateResponse(prompt);
+      chunkSummaries.push(response.answer);
+      
+      // Rate limiting: wait between chunks (15 req/min = 4 seconds apart)
+      if (i < chunks.length - 1) {
+        console.log('⏳ Waiting 4 seconds (rate limiting)...');
+        await this.delay(4000);
+      }
+    }
+    
+    console.log('🔗 Combining chunk summaries...');
+    
+    // Now create a final summary from all chunk summaries
+    const finalPrompt = `You are combining ${chunks.length} section summaries into one comprehensive document summary.
+
+=== SECTION SUMMARIES ===
+${chunkSummaries.map((s, i) => `**Section ${i + 1}:**
+${s}`).join('\n\n')}
+
+=== CREATE FINAL SUMMARY ===
+Combine these sections into a well-structured overall summary:
+
+# 📚 Complete Document Summary
+
+## 🎯 Overall Topic & Purpose
+[What this entire document covers]
+
+## 🔑 Key Concepts Across All Sections
+[Main ideas from all sections combined]
+
+## 📖 Important Details & Findings
+[Crucial information from the document]
+
+## 🔗 Connections & Flow
+[How sections relate to each other]
+
+## ✅ Main Takeaways
+[Most important points to remember]
+
+Make it cohesive, comprehensive, and well-formatted.`;
+
+    const finalResponse = await aiService.generateResponse(finalPrompt);
+    
+    console.log('✅ Large document summarization completed');
+    
+    return {
+      success: true,
+      summary: finalResponse.answer,
+      method: 'ai_chunked',
+      chunksProcessed: chunks.length,
+      source: finalResponse.source
+    };
+  }
+
+  // Split text into chunks
+  splitIntoChunks(text, chunkSize) {
+    const chunks = [];
+    
+    // Try to split at paragraph boundaries for better context
+    const paragraphs = text.split(/\n\s*\n/);
+    let currentChunk = '';
+    
+    for (const paragraph of paragraphs) {
+      if ((currentChunk + paragraph).length <= chunkSize) {
+        currentChunk += paragraph + '\n\n';
+      } else {
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+        }
+        currentChunk = paragraph + '\n\n';
+      }
+    }
+    
+    // Add the last chunk
+    if (currentChunk) {
+      chunks.push(currentChunk.trim());
+    }
+    
+    // If no paragraph-based chunking worked, fall back to character splitting
+    if (chunks.length === 0) {
+      for (let i = 0; i < text.length; i += chunkSize) {
+        chunks.push(text.substring(i, i + chunkSize));
+      }
+    }
+    
+    return chunks;
+  }
+
+  // Helper to add delay
+  delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  // Estimate if AI summarization is feasible
+  canUseAI(text) {
+    const charCount = text.length;
+    const tokenEstimate = Math.ceil(charCount / 4);
+    
+    return {
+      feasible: true, // Always feasible with chunking
+      tokenEstimate,
+      requiresChunking: tokenEstimate > 30000,
+      estimatedChunks: Math.ceil(tokenEstimate / 6250),
+      estimatedTime: tokenEstimate > 30000 
+        ? Math.ceil(tokenEstimate / 6250) * 4 
+        : 5
+    };
   }
 }
 
