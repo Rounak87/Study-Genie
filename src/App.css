@@ -1,0 +1,18 @@
+/* 3D Flip Card Styles */
+.backface-hidden {
+  backface-visibility: hidden;
+}
+
+.rotateY-180 {
+  transform: rotateY(180deg);
+}
+
+/* StudyGenie specific styles */
+.min-h-screen {
+  min-height: 100vh;
+}
+
+/* Smooth transitions */
+* {
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out, border-color 0.15s ease-in-out;
+}
