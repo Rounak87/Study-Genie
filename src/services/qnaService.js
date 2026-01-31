@@ -33,11 +33,13 @@ class QnAService {
   }
 
   buildDocumentContext(summary) {
-    const sentences = summary.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    // Extract summary text from object if needed
+    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
+    const sentences = summaryText.split(/[.!?]+/).filter(s => s.trim().length > 10);
     
     // Extract key terms and entities
     this.keyTerms.clear();
-    const words = summary.toLowerCase().match(/\b\w{4,}\b/g) || [];
+    const words = summaryText.toLowerCase().match(/\b\w{4,}\b/g) || [];
     const wordFreq = {};
     
     words.forEach(word => {
@@ -54,7 +56,7 @@ class QnAService {
       sentences: sentences.map(s => s.trim()),
       keyTerms: Array.from(this.keyTerms),
       mainTopics: this.extractMainTopics(sentences),
-      entities: this.extractEntities(summary),
+      entities: this.extractEntities(summaryText),
       concepts: this.extractConcepts(sentences)
     };
   }
@@ -180,7 +182,8 @@ class QnAService {
 
   calculateRelevanceScore(question, summary) {
     const questionWords = question.split(' ').filter(w => w.length > 3 && !this.isStopWord(w));
-    const summaryLower = summary.toLowerCase();
+    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
+    const summaryLower = summaryText.toLowerCase();
     
     let relevanceScore = 0;
     questionWords.forEach(word => {

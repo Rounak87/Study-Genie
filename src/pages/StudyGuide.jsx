@@ -132,7 +132,8 @@ const StudyGuide = () => {
     ];
 
     // Add context-specific suggestions based on content
-    const summaryLower = summary.toLowerCase();
+    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
+    const summaryLower = summaryText.toLowerCase();
     
     if (summaryLower.includes('process') || summaryLower.includes('method')) {
       suggestions.push("How does this process work?");
@@ -449,8 +450,8 @@ const StudyGuide = () => {
                       Generated from uploaded document
                     </span>
                   </div>
-                  <p className="text-gray-300 mb-4 leading-relaxed">
-                    {summary}
+                  <p className="text-gray-300 mb-4 leading-relaxed whitespace-pre-wrap">
+                    {typeof summary === 'string' ? summary : summary?.summary || 'No summary available'}
                   </p>
                 </motion.div>
               ) : (

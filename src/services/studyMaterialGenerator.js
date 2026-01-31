@@ -2,91 +2,135 @@
 
 class StudyMaterialGenerator {
   generateQuestions(summary) {
-    if (!summary || summary.length < 50) {
+    // Extract summary text from object if needed
+    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
+    if (!summaryText || summaryText.length < 50) {
       return [];
     }
 
-    const sentences = summary.split('.').filter(s => s.trim().length > 10);
-    const words = summary.split(' ');
+    const sentences = summaryText.split(/[.!?]+/).filter(s => s.trim().length > 10);
+    const paragraphs = summaryText.split('\n\n').filter(p => p.trim().length > 20);
     const questions = [];
+    
+    // Extract key concepts from headers and bold text
+    const concepts = [];
+    const conceptMatches = summaryText.match(/(?:^|\n)(?:#{1,3}\s+|(?:\*\*|__))([^*_\n]+)(?:\*\*|__)?/g);
+    if (conceptMatches) {
+      conceptMatches.forEach(match => {
+        const concept = match.replace(/[#*_\n]/g, '').trim();
+        if (concept.length > 5 && concept.length < 100) {
+          concepts.push(concept);
+        }
+      });
+    }
 
-    // Question 1: Main topic identification
+    // Question 1: Main topic from first meaningful sentence
     if (sentences.length > 0) {
+      const mainTopic = sentences[0].trim();
       questions.push({
         id: 1,
         question: "What is the main topic discussed in this document?",
         options: [
-          sentences[0].trim() + '...',
-          "Unrelated topic about technology",
-          "Business management principles",
-          "Historical events and dates"
-        ],
+          mainTopic.length > 100 ? mainTopic.substring(0, 97) + '...' : mainTopic,
+          "Advanced machine learning algorithms",
+          "Historical economic trends",
+          "Modern software development"
+        ].sort(() => Math.random() - 0.5),
         correctAnswer: 0,
         difficulty: 'Easy',
-        explanation: "This is extracted from the opening statement of the document summary."
+        explanation: "This is the primary topic extracted from the document's introduction."
       });
     }
 
-    // Question 2: Key concepts
-    if (sentences.length > 1) {
+    // Question 2: Key concept identification
+    if (concepts.length >= 2) {
+      const concept1 = concepts[0];
+      const concept2 = concepts[Math.min(1, concepts.length - 1)];
       questions.push({
         id: 2,
-        question: "Which of the following best describes the key concepts mentioned?",
+        question: `Which of the following is a key concept mentioned in the document?`,
         options: [
-          "Generic concept A",
-          sentences[1] ? sentences[1].trim() : "Key concepts from the document",
-          "Unrelated concept B",
-          "None of the above"
-        ],
-        correctAnswer: 1,
+          concept1,
+          "Quantum physics principles",
+          "Renaissance art history",
+          "Cellular biology"
+        ].sort(() => Math.random() - 0.5),
+        correctAnswer: 0,
         difficulty: 'Medium',
-        explanation: "This represents the core ideas discussed in the document."
+        explanation: `"${concept1}" is specifically discussed in the document.`
       });
     }
 
-    // Question 3: Details and conclusions
-    if (sentences.length > 2) {
-      const lastSentence = sentences[sentences.length - 1];
+    // Question 3: Detail comprehension from middle content
+    if (sentences.length > 3) {
+      const detailSentence = sentences[Math.floor(sentences.length / 2)].trim();
       questions.push({
         id: 3,
-        question: "Based on the document, what can you conclude?",
+        question: "According to the document, which statement is accurate?",
         options: [
-          "Conclusion not mentioned",
-          "Generic conclusion B",
-          lastSentence ? lastSentence.trim() : "The main conclusion from the summary",
-          "All of the above"
-        ],
-        correctAnswer: 2,
-        difficulty: 'Hard',
-        explanation: "This conclusion is drawn from the overall content analysis."
+          detailSentence.length > 100 ? detailSentence.substring(0, 97) + '...' : detailSentence,
+          "The earth is flat according to modern science",
+          "Time travel was invented in 1995",
+          "All programming languages are identical"
+        ].sort(() => Math.random() - 0.5),
+        correctAnswer: 0,
+        difficulty: 'Medium',
+        explanation: "This detail is mentioned in the document content."
       });
     }
 
-    // Question 4: True/False question
-    if (words.length > 20) {
-      const keyPhrase = words.slice(10, 20).join(' ');
+    // Question 4: Conceptual understanding
+    if (paragraphs.length > 1) {
+      const conceptParagraph = paragraphs[1].split(/[.!?]+/)[0].trim();
       questions.push({
         id: 4,
-        question: `True or False: The document mentions "${keyPhrase}"`,
+        question: "What is one of the important points discussed?",
         options: [
-          "True",
-          "False"
-        ],
+          conceptParagraph.length > 100 ? conceptParagraph.substring(0, 97) + '...' : conceptParagraph,
+          "The importance of underwater basket weaving",
+          "How to train dragons effectively",
+          "The secret to eternal youth"
+        ].sort(() => Math.random() - 0.5),
         correctAnswer: 0,
-        difficulty: 'Easy',
-        explanation: "This phrase appears in the document summary."
+        difficulty: 'Hard',
+        explanation: "This concept is explained in detail within the document."
       });
     }
 
-    return questions;
+    // Question 5: Final concept or conclusion
+    if (sentences.length > 5) {
+      const conclusion = sentences[sentences.length - 1].trim();
+      questions.push({
+        id: 5,
+        question: "What conclusion or final point does the document make?",
+        options: [
+          conclusion.length > 100 ? conclusion.substring(0, 97) + '...' : conclusion,
+          "Aliens built the pyramids",
+          "The moon is made of cheese",
+          "Dinosaurs never existed"
+        ].sort(() => Math.random() - 0.5),
+        correctAnswer: 0,
+        difficulty: 'Easy',
+        explanation: "This is stated in the concluding section of the document."
+      });
+    }
+
+    // Ensure correct answer index is updated after sorting
+    return questions.map(q => {
+      const correctOption = q.options[0];
+      const correctIndex = q.options.indexOf(correctOption);
+      return { ...q, correctAnswer: correctIndex };
+    });
   }
 
   generateFlashcards(summary) {
-    if (!summary || summary.length < 50) {
+    // Extract summary text from object if needed
+    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
+    if (!summaryText || summaryText.length < 50) {
       return [];
     }
 
-    const sentences = summary.split('.').filter(s => s.trim().length > 10);
+    const sentences = summaryText.split('.').filter(s => s.trim().length > 10);
     const flashcards = [];
 
     // Main topic flashcard

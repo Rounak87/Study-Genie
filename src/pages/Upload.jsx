@@ -33,6 +33,8 @@ const Upload = () => {
   const { summary, setSummary, generateStudyMaterials } = useSummary()
   const [error, setError] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [isSummarizing, setIsSummarizing] = useState(false)
+  const [toastMessage, setToastMessage] = useState('')
   const [viewerState, setViewerState] = useState({
     isOpen: false,
     documentData: null,
@@ -120,22 +122,73 @@ const Upload = () => {
 
   // Store only the latest summary in context for use in StudyGuide
   const summarizeText = async (docId, text) => {
+    let toast1Timer = null;
+    let toast2Timer = null;
+    let toast3Timer = null;
     try {
       if (summary) return;
-      console.log('Starting summarization for document:', docId);
-      const result = await summarizationService.summarizeText(text);
-      console.log('Summarization result:', result);
+      
+      setIsSummarizing(true);
+      
+      // First toast after 5 seconds
+      toast1Timer = setTimeout(() => {
+        setToastMessage('the ai is working believe me 😢');
+        setTimeout(() => setToastMessage(''), 5000);
+      }, 5000);
+      
+      // Second toast after 12 seconds (7 seconds after first)
+      toast2Timer = setTimeout(() => {
+        setToastMessage('still working... 😔');
+        setTimeout(() => setToastMessage(''), 5000);
+      }, 12000);
+      
+      // Third toast after 22 seconds (10 seconds after second)
+      toast3Timer = setTimeout(() => {
+        setToastMessage('yeahhh apparently the ai is trashhh still working 🗑️');
+        setTimeout(() => setToastMessage(''), 5000);
+      }, 22000);
+      
+      // If text not provided, fetch it from storage
+      let documentText = text;
+      if (!documentText) {
+        console.log('Fetching document text for:', docId);
+        const textData = await documentStorage.getDocumentText(docId);
+        documentText = textData.textContent;
+        console.log('Retrieved text length:', documentText?.length || 0);
+      }
+      
+      console.log('Starting AI summarization for document:', docId);
+      const result = await summarizationService.summarizeText(documentText);
+      console.log('AI Summarization result:', result);
       if (result.success) {
-        setSummary(result.summary);
+        const summaryData = {
+          id: docId,
+          summary: result.summary,
+          method: result.method,
+          chunksProcessed: result.chunksProcessed,
+          source: result.source,
+          timestamp: new Date().toISOString()
+        };
+        setSummary(summaryData);
+        
         return result;
       } else {
         throw new Error(result.error || 'Failed to generate summary');
       }
     } catch (error) {
       console.error('Error summarizing text:', error);
+      alert('Failed to generate summary: ' + error.message);
       throw error;
+    } finally {
+      setIsSummarizing(false);
+      clearTimeout(toast1Timer);
+      clearTimeout(toast2Timer);
+      clearTimeout(toast3Timer);
+      setToastMessage(''); // Clear any active toast
     }
   };
+
+ 
 
   const processFiles = async () => {
     setProcessing(true)
@@ -167,25 +220,7 @@ const Upload = () => {
           }
         )
 
-        // If text was extracted, generate summary
-        if (result.textExtracted) {
-          setFiles(prev => prev.map(f => 
-            f.id === fileObj.id 
-              ? { ...f, stage: 'Generating summary...' }
-              : f
-          ));
-
-          try {
-            const textData = await documentStorage.getDocumentText(result.documentId);
-            const summaryResult = await summarizationService.summarizeText(textData.textContent);
-            
-            if (summaryResult.success) {
-              setSummary(summaryResult.summary);
-            }
-          } catch (error) {
-            console.error('Error generating summary:', error);
-          }
-        }
+        // Text extracted - summary will be generated when user clicks "Generate Summary" button
 
         // Update file status to completed
         setFiles(prev => prev.map(f => 
@@ -195,7 +230,7 @@ const Upload = () => {
                 status: 'completed', 
                 progress: 100, 
                 stage: result.textExtracted ? 
-                  `Completed! Text extracted and summarized` : 
+                  `Completed! Ready for summarization` : 
                   'Completed! (No text extracted)',
                 documentId: result.documentId,
                 textExtracted: result.textExtracted,
@@ -549,8 +584,8 @@ const Upload = () => {
           `;
         };
 
-  const hasSummary = !!summary;
-  textWindow.document.write(createViewerContent(textData, documentId, hasSummary, summary || ''));
+  const hasSummary = !!summary && !!summary.summary;
+  textWindow.document.write(createViewerContent(textData, documentId, hasSummary, summary?.summary || ''));
   textWindow.document.close();
 
         // Set up message handler in the opener window
@@ -628,7 +663,9 @@ const Upload = () => {
       }
       
       // Generate study materials from the summary
-      generateStudyMaterials(currentSummary);
+      // Extract the summary text if it's an object
+      const summaryText = typeof currentSummary === 'string' ? currentSummary : currentSummary?.summary || '';
+      generateStudyMaterials(summaryText);
       
       // Navigate to study guide with the materials
       navigate('/study-guide');
@@ -1009,16 +1046,60 @@ const Upload = () => {
                           {doc.hasText && (
                             <button
                               onClick={() => summarizeText(doc.id)}
-                              className="flex items-center justify-center px-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl border border-indigo-400/30 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                              disabled={isSummarizing}
+                              className="flex items-center justify-center px-4 py-3 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white rounded-xl border border-indigo-400/30 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                             >
-                              <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-2" />
-                              Generate Summary
+                              {isSummarizing ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                  Generating...
+                                </>
+                              ) : (
+                                <>
+                                  <ChatBubbleBottomCenterTextIcon className="w-5 h-5 mr-2" />
+                                  Generate Summary
+                                </>
+                              )}
                             </button>
                           )}
                         </div>
 
                         {/* Study Materials Row */}
-                        {summary && (
+                        {summary && summary.id === doc.id && (
+                          <div className="space-y-3">
+                            {/* AI Summary Badge */}
+                            <div className="w-full flex items-center justify-center px-4 py-2 bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-300 rounded-xl border border-green-400/30 text-sm font-medium">
+                              <SparklesIcon className="w-5 h-5 mr-2" />
+                              ✨ Summary Generated
+                              {summary.chunksProcessed && (
+                                <span className="ml-2 text-xs">
+                                  ({summary.chunksProcessed} chunks)
+                                </span>
+                              )}
+                            </div>
+                            
+                            {/* View Summary Button */}
+                            <button
+                              onClick={() => navigate('/study-guide')}
+                              className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl border border-blue-400/30 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                            >
+                              <AcademicCapIcon className="w-5 h-5 mr-2" />
+                              View Summary
+                            </button>
+                            
+                            {/* Generate Quiz & Flashcards Button */}
+                            <button
+                              onClick={() => handleGenerateQuizAndFlashcards(doc.id)}
+                              className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl border border-yellow-400/30 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                            >
+                              <LightBulbIcon className="w-5 h-5 mr-2" />
+                              Generate Quiz & Flashcards
+                            </button>
+                          </div>
+                        )}
+                        
+                        {/* Generate Summary button when no summary */}
+                        {(!summary || summary.id !== doc.id) && doc.hasText && (
                           <button
                             onClick={() => handleGenerateQuizAndFlashcards(doc.id)}
                             className="w-full flex items-center justify-center px-4 py-3 bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white rounded-xl border border-yellow-400/30 transition-all duration-300 text-sm font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
@@ -1056,42 +1137,6 @@ const Upload = () => {
                           </button>
                         </div>
                       </div>
-
-                      {/* Summary section */}
-                      {summary && (
-                        <div className="mt-4 p-4 bg-gradient-to-r from-indigo-500/10 to-purple-500/10 rounded-xl border border-indigo-500/20 backdrop-blur-sm">
-                          <div className="flex items-center justify-between mb-3">
-                            <h4 className="text-sm font-semibold text-indigo-300 flex items-center">
-                              <SparklesIcon className="w-4 h-4 mr-2" />
-                              AI Summary
-                            </h4>
-                            <span className="text-xs text-indigo-400 bg-indigo-500/20 px-2 py-1 rounded-full">
-                              Ready for Study
-                            </span>
-                          </div>
-                          <div className="prose prose-invert prose-sm max-w-none">
-                            {summary.split('\n').map((line, index) => {
-                              if (line.startsWith('# ')) {
-                                return <h3 key={index} className="text-lg font-bold text-indigo-300 mt-2 mb-3">{line.substring(2)}</h3>;
-                              } else if (line.startsWith('## ')) {
-                                return <h4 key={index} className="text-base font-semibold text-indigo-300 mt-3 mb-2">{line.substring(3)}</h4>;
-                              } else if (line.startsWith('### ')) {
-                                return <h5 key={index} className="text-sm font-medium text-indigo-300 mt-2 mb-1">{line.substring(4)}</h5>;
-                              } else if (line.startsWith('• ')) {
-                                return (
-                                  <div key={index} className="flex items-start space-x-2 my-1">
-                                    <span className="text-indigo-400 mt-1">•</span>
-                                    <p className="text-sm text-gray-300 flex-1">{line.substring(2)}</p>
-                                  </div>
-                                );
-                              } else if (line.trim()) {
-                                return <p key={index} className="text-sm text-gray-300 my-1">{line}</p>;
-                              }
-                              return null;
-                            })}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
@@ -1109,6 +1154,21 @@ const Upload = () => {
           </motion.div>
         </motion.div>
       </div>
+      
+      {/* Toast Notification */}
+      {toastMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: 50 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 50 }}
+          className="fixed bottom-8 right-8 bg-gradient-to-r from-purple-600 to-pink-600 text-white px-6 py-4 rounded-2xl shadow-2xl border border-white/20 backdrop-blur-lg z-50"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+            <p className="font-medium text-sm">{toastMessage}</p>
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }
