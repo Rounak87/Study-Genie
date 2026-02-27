@@ -1,103 +1,115 @@
 // Text summarization service with AI enhancement
-import aiService from './aiService';
+import aiService from "./aiService";
 
 class SummarizationService {
   constructor() {
     // Initialize with your HuggingFace API token
     this.API_TOKEN = "hf_xxx"; // Replace with your actual token
-    this.API_URL = "https://api-inference.huggingface.co/models/facebook/bart-large-cnn";
+    this.API_URL =
+      "https://api-inference.huggingface.co/models/facebook/bart-large-cnn";
   }
 
-  async summarizeText(text) {
+  async summarizeText(text, style = "detailed") {
     if (!text || text.length < 10) {
       return {
         success: false,
-        error: 'Text is too short to summarize'
+        error: "Text is too short to summarize",
       };
     }
 
     try {
-      console.log('📝 Starting AI-enhanced text summarization...');
-      
+      console.log(
+        `📝 Starting AI-enhanced text summarization (${style} style)...`,
+      );
+
       // Check text length and determine if chunking is needed
       const charCount = text.length;
       const tokenEstimate = Math.ceil(charCount / 4);
-      
-      console.log(`📊 Document size: ${charCount} chars, ~${tokenEstimate} tokens`);
-      
+
+      console.log(
+        `📊 Document size: ${charCount} chars, ~${tokenEstimate} tokens`,
+      );
+
       if (tokenEstimate > 30000) {
         // Large document: use chunking
-        console.log('📦 Large document detected, using chunked processing');
+        console.log("📦 Large document detected, using chunked processing");
         return await this.summarizeLargeDocument(text);
       }
-      
+
       // Small document: direct AI call
-      console.log('✨ Processing with Gemini AI...');
-      const prompt = `You are an expert educational content analyzer. Analyze this document and create a COMPREHENSIVE, DETAILED, LONG summary.
+      console.log("✨ Processing with Gemini AI...");
+
+      const detailedPrompt = `You are an expert professor distilling this document into exhaustive, highly detailed "Cornell-Style Study Notes".
+Format the output in clean, beautiful Markdown. DO NOT BE CONCISE. Be exceptionally thorough. Extract all major definitions, formulas, theories, historical facts, or key arguments. 
 
 === DOCUMENT TO ANALYZE ===
 ${text.substring(0, 30000)}
 
-=== REQUIRED OUTPUT FORMAT ===
-Provide a DETAILED and COMPREHENSIVE summary. DO NOT make it short. Include as much relevant information as possible.
+=== REQUIRED STRUCTURE ===
+# 📝 Detailed Study Notes
 
-# 📚 Document Summary
+## 🎯 Executive Overview
+[3-4 detailed paragraphs explaining the overarching theme, context, and purpose of the text. Do not skip details.]
 
-## 🎯 Main Topic
-[Write 3-5 detailed paragraphs explaining what this document is about, its context, background, and primary purpose. Be thorough and comprehensive.]
+## 📚 Comprehensive Chapter / Section Breakdown
+[For each major section or theme in the document, provide a detailed breakdown:]
+### [Section/Theme Name]
+- **[Concept/Term 1]:** [Thorough 3-4 sentence explanation detailing how it works, why it matters, and examples]
+- **[Concept/Term 2]:** [Thorough 3-4 sentence explanation detailing how it works, why it matters, and examples]
+(Extract at least 10-15 concepts across all sections)
 
-## 🔑 Key Concepts
-[List and explain 8-12 most important concepts or ideas. For EACH concept, provide:
-- **Concept Name:** [2-3 paragraphs of detailed explanation, examples, and significance]
+## 📌 Critical Facts, Dates & Data
+- [Bullet point with exact data, statistic, equation, or important fact]
+- [Bullet point with exact data, statistic, equation, or important fact]
+(Extract all critical factual details)
 
-Be thorough - this should be substantial.]
+## 💡 Practical Application / Synthesis
+[2 detailed paragraphs explaining real-world applications, significance, or synthesizing the grand takeaway.]
 
-## 📖 Important Details
-[Write 4-6 comprehensive paragraphs covering:
-- Crucial information and data
-- Definitions and terminology
-- Processes and methodologies  
-- Findings and results
-- Supporting evidence
+Make these notes incredibly valuable for a university student preparing for a final exam. Do not miss any crucial information.`;
 
-Provide extensive detail here.]
+      const concisePrompt = `You are an expert tutor creating highly polished, concise "High-Yield Study Notes" from the following text.
+Format the output in clean, beautiful Markdown. Use bullet points, bold text for emphasis, and clear hierarchical headings. Focus strictly on extracting high-yield, straight-to-the-point information.
 
-## 💡 Practical Applications
-[Write 3-4 detailed paragraphs explaining:
-- How this knowledge can be applied in real scenarios
-- Industry applications
-- Use cases and examples
-- Implementation strategies]
+=== DOCUMENT TO ANALYZE ===
+${text.substring(0, 30000)}
 
-## ✅ Key Takeaways
-[List 10-15 detailed bullet points of the most important things to remember. Each point should be a complete sentence or two.]
+=== REQUIRED STRUCTURE ===
+# 📝 Concise Study Notes
 
-## 🔬 Additional Insights
-[Write 2-3 more paragraphs covering:
-- Interesting observations
-- Connections to other topics
-- Future implications
-- Expert perspectives]
+## 🎯 High-Yield Summary
+[1-2 short, punchy paragraphs explaining the core essence of the document]
 
-Make this summary COMPREHENSIVE and DETAILED. The longer and more thorough, the better. Use proper markdown formatting.`;
+## 🔑 Core Concepts
+- **[Concept 1]:** [Clear, concise 1-sentence definition]
+- **[Concept 2]:** [Clear, concise 1-sentence definition]
+(Extract 5-8 crucial concepts)
+
+## 📌 Critical Details
+- [Bullet point with important fact, date, or statistic]
+- [Bullet point with important fact, date, or statistic]
+(Extract 5-8 critical details)
+
+Ensure the formatting consists of short sentences and extremely high readability. Build it like a premium cheat sheet.`;
+
+      const prompt = style === "concise" ? concisePrompt : detailedPrompt;
 
       const response = await aiService.generateResponse(prompt, {
-        subject: 'general',
-        complexity: 'intermediate'
+        subject: "general",
+        complexity: "intermediate",
       });
-      
-      console.log('✅ AI summarization completed');
-      
+
+      console.log("✅ AI summarization completed");
+
       return {
         success: true,
         summary: response.answer,
-        method: 'ai',
+        method: "ai",
         confidence: response.confidence,
-        source: response.source
+        source: response.source,
       };
-
     } catch (error) {
-      console.error('📝 Summarization error:', error);
+      console.error("📝 Summarization error:", error);
       return {
         success: false,
         error: `AI summarization failed: ${error.message}. Please check your Gemini API key and try again.`,
@@ -105,21 +117,19 @@ Make this summary COMPREHENSIVE and DETAILED. The longer and more thorough, the 
     }
   }
 
-
-
   // For large documents: chunk and summarize
   async summarizeLargeDocument(text) {
     const chunkSize = 25000; // ~6,250 tokens per chunk
     const chunks = this.splitIntoChunks(text, chunkSize);
-    
+
     console.log(`📄 Processing large document in ${chunks.length} chunks`);
-    
+
     const chunkSummaries = [];
-    
+
     // Process each chunk
     for (let i = 0; i < chunks.length; i++) {
       console.log(`📝 Processing chunk ${i + 1}/${chunks.length}...`);
-      
+
       const prompt = `You are analyzing section ${i + 1} of ${chunks.length} from a larger educational document.
 
 === SECTION CONTENT ===
@@ -141,22 +151,26 @@ Be concise but thorough.`;
 
       const response = await aiService.generateResponse(prompt);
       chunkSummaries.push(response.answer);
-      
+
       // Rate limiting: wait between chunks (15 req/min = 4 seconds apart)
       if (i < chunks.length - 1) {
-        console.log('⏳ Waiting 4 seconds (rate limiting)...');
+        console.log("⏳ Waiting 4 seconds (rate limiting)...");
         await this.delay(4000);
       }
     }
-    
-    console.log('🔗 Combining chunk summaries...');
-    
+
+    console.log("🔗 Combining chunk summaries...");
+
     // Now create a final summary from all chunk summaries
     const finalPrompt = `You are combining ${chunks.length} section summaries into one comprehensive document summary.
 
 === SECTION SUMMARIES ===
-${chunkSummaries.map((s, i) => `**Section ${i + 1}:**
-${s}`).join('\n\n')}
+${chunkSummaries
+  .map(
+    (s, i) => `**Section ${i + 1}:**
+${s}`,
+  )
+  .join("\n\n")}
 
 === CREATE FINAL SUMMARY ===
 Combine these sections into a well-structured overall summary:
@@ -181,70 +195,69 @@ Combine these sections into a well-structured overall summary:
 Make it cohesive, comprehensive, and well-formatted.`;
 
     const finalResponse = await aiService.generateResponse(finalPrompt);
-    
-    console.log('✅ Large document summarization completed');
-    
+
+    console.log("✅ Large document summarization completed");
+
     return {
       success: true,
       summary: finalResponse.answer,
-      method: 'ai_chunked',
+      method: "ai_chunked",
       chunksProcessed: chunks.length,
-      source: finalResponse.source
+      source: finalResponse.source,
     };
   }
 
   // Split text into chunks
   splitIntoChunks(text, chunkSize) {
     const chunks = [];
-    
+
     // Try to split at paragraph boundaries for better context
     const paragraphs = text.split(/\n\s*\n/);
-    let currentChunk = '';
-    
+    let currentChunk = "";
+
     for (const paragraph of paragraphs) {
       if ((currentChunk + paragraph).length <= chunkSize) {
-        currentChunk += paragraph + '\n\n';
+        currentChunk += paragraph + "\n\n";
       } else {
         if (currentChunk) {
           chunks.push(currentChunk.trim());
         }
-        currentChunk = paragraph + '\n\n';
+        currentChunk = paragraph + "\n\n";
       }
     }
-    
+
     // Add the last chunk
     if (currentChunk) {
       chunks.push(currentChunk.trim());
     }
-    
+
     // If no paragraph-based chunking worked, fall back to character splitting
     if (chunks.length === 0) {
       for (let i = 0; i < text.length; i += chunkSize) {
         chunks.push(text.substring(i, i + chunkSize));
       }
     }
-    
+
     return chunks;
   }
 
   // Helper to add delay
   delay(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   // Estimate if AI summarization is feasible
   canUseAI(text) {
     const charCount = text.length;
     const tokenEstimate = Math.ceil(charCount / 4);
-    
+
     return {
       feasible: true, // Always feasible with chunking
       tokenEstimate,
       requiresChunking: tokenEstimate > 30000,
       estimatedChunks: Math.ceil(tokenEstimate / 6250),
-      estimatedTime: tokenEstimate > 30000 
-        ? Math.ceil(tokenEstimate / 6250) * 4 
-        : 5
+      estimatedTime:
+        tokenEstimate > 30000 ? Math.ceil(tokenEstimate / 6250) * 4 : 5,
     };
   }
 }

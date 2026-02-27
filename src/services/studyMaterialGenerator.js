@@ -1,202 +1,162 @@
-// Service to generate quiz questions and flashcards from document summaries
+// Service to generate quiz questions and flashcards from document text using Gemini AI
+import aiService from "./aiService";
 
 class StudyMaterialGenerator {
-  generateQuestions(summary) {
-    // Extract summary text from object if needed
-    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
-    if (!summaryText || summaryText.length < 50) {
-      return [];
-    }
+  async generateQuestions(documentText) {
+    if (!documentText || documentText.length < 50) return [];
 
-    const sentences = summaryText.split(/[.!?]+/).filter(s => s.trim().length > 10);
-    const paragraphs = summaryText.split('\n\n').filter(p => p.trim().length > 20);
-    const questions = [];
-    
-    // Extract key concepts from headers and bold text
-    const concepts = [];
-    const conceptMatches = summaryText.match(/(?:^|\n)(?:#{1,3}\s+|(?:\*\*|__))([^*_\n]+)(?:\*\*|__)?/g);
-    if (conceptMatches) {
-      conceptMatches.forEach(match => {
-        const concept = match.replace(/[#*_\n]/g, '').trim();
-        if (concept.length > 5 && concept.length < 100) {
-          concepts.push(concept);
+    const prompt = `You are an expert teacher. Generate exactly 10 high-quality, challenging multiple-choice questions based on the following text. 
+Ensure plausible distractors and deep conceptual understanding. Do NOT base questions on trivial details.
+Return carefully formatted JSON ONLY. The JSON must be an array of objects matching this exact structure:
+[
+  {
+    "id": 1,
+    "question": "Question text here?",
+    "options": ["Correct Option", "Distractor 1", "Distractor 2", "Distractor 3"],
+    "correctAnswer": 0,
+    "difficulty": "Medium",
+    "explanation": "Detailed explanation of why the answer is correct."
+  }
+]
+Note: Ensure correctAnswer is the integer index of the correct option (0, 1, 2, or 3). Shuffle the correct option randomly! 
+
+=== SOURCE TEXT ===
+${documentText.substring(0, 30000)}
+`;
+
+    try {
+      console.log("🤖 Generating Quiz via Gemini...");
+      const response = await aiService.model.generateContent(prompt);
+      const text = response.response.text();
+
+      let questions = [];
+
+      try {
+        // Try direct parsing first
+        const cleaned = text
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim();
+        questions = JSON.parse(cleaned);
+
+        // If it's wrapped in an object like { "questions": [...] }
+        if (!Array.isArray(questions) && typeof questions === "object") {
+          const possibleArray = Object.values(questions).find((val) =>
+            Array.isArray(val),
+          );
+          if (possibleArray) questions = possibleArray;
         }
-      });
-    }
+      } catch (parseErr) {
+        // Fallback: extract array using regex
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch)
+          throw new Error("Could not find JSON array in response");
+        questions = JSON.parse(jsonMatch[0]);
+      }
 
-    // Question 1: Main topic from first meaningful sentence
-    if (sentences.length > 0) {
-      const mainTopic = sentences[0].trim();
-      questions.push({
-        id: 1,
-        question: "What is the main topic discussed in this document?",
-        options: [
-          mainTopic.length > 100 ? mainTopic.substring(0, 97) + '...' : mainTopic,
-          "Advanced machine learning algorithms",
-          "Historical economic trends",
-          "Modern software development"
-        ].sort(() => Math.random() - 0.5),
-        correctAnswer: 0,
-        difficulty: 'Easy',
-        explanation: "This is the primary topic extracted from the document's introduction."
-      });
-    }
+      if (!Array.isArray(questions))
+        throw new Error("Parsed result is not an array");
 
-    // Question 2: Key concept identification
-    if (concepts.length >= 2) {
-      const concept1 = concepts[0];
-      const concept2 = concepts[Math.min(1, concepts.length - 1)];
-      questions.push({
-        id: 2,
-        question: `Which of the following is a key concept mentioned in the document?`,
-        options: [
-          concept1,
-          "Quantum physics principles",
-          "Renaissance art history",
-          "Cellular biology"
-        ].sort(() => Math.random() - 0.5),
-        correctAnswer: 0,
-        difficulty: 'Medium',
-        explanation: `"${concept1}" is specifically discussed in the document.`
-      });
-    }
-
-    // Question 3: Detail comprehension from middle content
-    if (sentences.length > 3) {
-      const detailSentence = sentences[Math.floor(sentences.length / 2)].trim();
-      questions.push({
-        id: 3,
-        question: "According to the document, which statement is accurate?",
-        options: [
-          detailSentence.length > 100 ? detailSentence.substring(0, 97) + '...' : detailSentence,
-          "The earth is flat according to modern science",
-          "Time travel was invented in 1995",
-          "All programming languages are identical"
-        ].sort(() => Math.random() - 0.5),
-        correctAnswer: 0,
-        difficulty: 'Medium',
-        explanation: "This detail is mentioned in the document content."
-      });
-    }
-
-    // Question 4: Conceptual understanding
-    if (paragraphs.length > 1) {
-      const conceptParagraph = paragraphs[1].split(/[.!?]+/)[0].trim();
-      questions.push({
-        id: 4,
-        question: "What is one of the important points discussed?",
-        options: [
-          conceptParagraph.length > 100 ? conceptParagraph.substring(0, 97) + '...' : conceptParagraph,
-          "The importance of underwater basket weaving",
-          "How to train dragons effectively",
-          "The secret to eternal youth"
-        ].sort(() => Math.random() - 0.5),
-        correctAnswer: 0,
-        difficulty: 'Hard',
-        explanation: "This concept is explained in detail within the document."
-      });
-    }
-
-    // Question 5: Final concept or conclusion
-    if (sentences.length > 5) {
-      const conclusion = sentences[sentences.length - 1].trim();
-      questions.push({
-        id: 5,
-        question: "What conclusion or final point does the document make?",
-        options: [
-          conclusion.length > 100 ? conclusion.substring(0, 97) + '...' : conclusion,
-          "Aliens built the pyramids",
-          "The moon is made of cheese",
-          "Dinosaurs never existed"
-        ].sort(() => Math.random() - 0.5),
-        correctAnswer: 0,
-        difficulty: 'Easy',
-        explanation: "This is stated in the concluding section of the document."
-      });
-    }
-
-    // Ensure correct answer index is updated after sorting
-    return questions.map(q => {
-      const correctOption = q.options[0];
-      const correctIndex = q.options.indexOf(correctOption);
-      return { ...q, correctAnswer: correctIndex };
-    });
-  }
-
-  generateFlashcards(summary) {
-    // Extract summary text from object if needed
-    const summaryText = typeof summary === 'string' ? summary : summary?.summary || '';
-    if (!summaryText || summaryText.length < 50) {
+      return questions.map((q, i) => ({
+        id: i + 1,
+        question: q.question,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        difficulty: q.difficulty || "Medium",
+        explanation: q.explanation || "",
+      }));
+    } catch (e) {
+      console.error("Quiz generation failed:", e);
       return [];
     }
-
-    const sentences = summaryText.split('.').filter(s => s.trim().length > 10);
-    const flashcards = [];
-
-    // Main topic flashcard
-    if (sentences.length > 0) {
-      flashcards.push({
-        id: 1,
-        front: "Main Topic",
-        back: sentences[0].trim(),
-        difficulty: 'Easy',
-        category: 'Overview'
-      });
-    }
-
-    // Key points flashcard
-    if (sentences.length > 1) {
-      flashcards.push({
-        id: 2,
-        front: "Key Points",
-        back: sentences.slice(0, 3).join('. ') + '.',
-        difficulty: 'Medium',
-        category: 'Details'
-      });
-    }
-
-    // Important concept flashcard
-    if (sentences.length > 2) {
-      flashcards.push({
-        id: 3,
-        front: "Important Concept",
-        back: sentences[Math.floor(sentences.length / 2)].trim(),
-        difficulty: 'Medium',
-        category: 'Concepts'
-      });
-    }
-
-    // Summary flashcard
-    flashcards.push({
-      id: 4,
-      front: "Document Summary",
-      back: summary.length > 200 ? summary.substring(0, 200) + '...' : summary,
-      difficulty: 'Easy',
-      category: 'Overview'
-    });
-
-    // Additional concept flashcards
-    if (sentences.length > 3) {
-      for (let i = 3; i < Math.min(sentences.length, 6); i++) {
-        flashcards.push({
-          id: i + 2,
-          front: `Concept ${i - 2}`,
-          back: sentences[i].trim(),
-          difficulty: i % 2 === 0 ? 'Medium' : 'Easy',
-          category: 'Details'
-        });
-      }
-    }
-
-    return flashcards;
   }
 
-  generateStudyMaterials(summary) {
-    return {
-      questions: this.generateQuestions(summary),
-      flashcards: this.generateFlashcards(summary),
-      isGenerated: true
-    };
+  async generateFlashcards(documentText) {
+    if (!documentText || documentText.length < 50) return [];
+
+    const prompt = `You are an expert tutor. Create exactly 10 essential flashcards covering the most core concepts, terms, and processes from the following text.
+Return carefully formatted JSON ONLY. The JSON must be an array of objects matching this exact structure:
+[
+  {
+    "id": 1,
+    "front": "Concept name or Question",
+    "back": "Detailed but concise answer or definition",
+    "category": "Main Ideas",
+    "difficulty": "Medium"
+  }
+]
+
+=== SOURCE TEXT ===
+${documentText.substring(0, 30000)}
+`;
+
+    try {
+      console.log("🤖 Generating Flashcards via Gemini...");
+      const response = await aiService.model.generateContent(prompt);
+      const text = response.response.text();
+
+      let flashcards = [];
+
+      try {
+        const cleaned = text
+          .replace(/```json/g, "")
+          .replace(/```/g, "")
+          .trim();
+        flashcards = JSON.parse(cleaned);
+
+        if (!Array.isArray(flashcards) && typeof flashcards === "object") {
+          const possibleArray = Object.values(flashcards).find((val) =>
+            Array.isArray(val),
+          );
+          if (possibleArray) flashcards = possibleArray;
+        }
+      } catch (parseErr) {
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (!jsonMatch)
+          throw new Error("Could not find JSON array in response");
+        flashcards = JSON.parse(jsonMatch[0]);
+      }
+
+      if (!Array.isArray(flashcards))
+        throw new Error("Parsed result is not an array");
+
+      return flashcards.map((f, i) => ({
+        id: i + 1,
+        front: f.front,
+        back: f.back,
+        category: f.category || "Concepts",
+        difficulty: f.difficulty || "Medium",
+      }));
+    } catch (e) {
+      console.error("Flashcard generation failed:", e);
+      return [];
+    }
+  }
+
+  async generateStudyMaterials(documentText) {
+    if (!documentText || documentText.length < 50) {
+      throw new Error("Document text is too short to generate materials.");
+    }
+
+    try {
+      const [questions, flashcards] = await Promise.all([
+        this.generateQuestions(documentText),
+        this.generateFlashcards(documentText),
+      ]);
+
+      return {
+        questions: questions || [],
+        flashcards: flashcards || [],
+        isGenerated: true,
+      };
+    } catch (err) {
+      console.error("Failed to generate complete materials:", err);
+      return {
+        questions: [],
+        flashcards: [],
+        isGenerated: false,
+      };
+    }
   }
 }
 
