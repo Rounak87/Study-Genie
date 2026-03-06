@@ -130,6 +130,13 @@ const StudyGuide = () => {
     setProcessingProgress(30);
     clearStudyMaterials();
     setSummary("");
+    setCurrentQuestionIndex(0);
+    setScore({ correct: 0, total: 0 });
+    setShowAnswer(false);
+    setSelectedAnswer(null);
+    setFlippedCard(null);
+    setQnaHistory([]);
+    setCurrentQuestion("");
 
     try {
       let textToUse = docObj.textContent;
@@ -183,6 +190,14 @@ const StudyGuide = () => {
       setProcessingStage("Extracting text from document...");
       setProcessingProgress(25);
       clearStudyMaterials();
+      setSummary("");
+      setCurrentQuestionIndex(0);
+      setScore({ correct: 0, total: 0 });
+      setShowAnswer(false);
+      setSelectedAnswer(null);
+      setFlippedCard(null);
+      setQnaHistory([]);
+      setCurrentQuestion("");
 
       try {
         const storeResult = await documentStorage.storeDocument(
@@ -243,7 +258,7 @@ const StudyGuide = () => {
         setIsProcessing(false);
       }
     },
-    [clearStudyMaterials, setSummary, generateStudyMaterials],
+    [clearStudyMaterials, setSummary, generateStudyMaterials, notesStyle],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -576,6 +591,13 @@ const StudyGuide = () => {
                     ) {
                       setSummary("");
                       clearStudyMaterials();
+                      setCurrentQuestionIndex(0);
+                      setScore({ correct: 0, total: 0 });
+                      setShowAnswer(false);
+                      setSelectedAnswer(null);
+                      setFlippedCard(null);
+                      setQnaHistory([]);
+                      setCurrentQuestion("");
                     }
                   }}
                   className={`${activeTab === "summaries" ? "ml-4" : "ml-auto"} flex items-center px-5 py-3 rounded-full font-semibold text-gray-300 hover:text-white transition-all bg-white/5 hover:bg-white/10 border border-white/10 border-dashed`}
@@ -601,9 +623,9 @@ const StudyGuide = () => {
                           __html: summary
                             .replace(/\n/g, "<br/>")
                             .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-                            .replace(/# (.*?)<br\/>/g, "<h1>$1</h1>")
-                            .replace(/## (.*?)<br\/>/g, "<h2>$1</h2>")
                             .replace(/### (.*?)<br\/>/g, "<h3>$1</h3>")
+                            .replace(/## (.*?)<br\/>/g, "<h2>$1</h2>")
+                            .replace(/# (.*?)<br\/>/g, "<h1>$1</h1>")
                             .replace(/- (.*?)<br\/>/g, "<li>$1</li>"),
                         }}
                       />

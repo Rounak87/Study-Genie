@@ -30,10 +30,11 @@ class SummarizationService {
         `📊 Document size: ${charCount} chars, ~${tokenEstimate} tokens`,
       );
 
-      if (tokenEstimate > 30000) {
+      if (tokenEstimate > 125000) {
+        // ~500k chars
         // Large document: use chunking
         console.log("📦 Large document detected, using chunked processing");
-        return await this.summarizeLargeDocument(text);
+        return await this.summarizeLargeDocument(text, style);
       }
 
       // Small document: direct AI call
@@ -43,7 +44,7 @@ class SummarizationService {
 Format the output in clean, beautiful Markdown. DO NOT BE CONCISE. Be exceptionally thorough. Extract all major definitions, formulas, theories, historical facts, or key arguments. 
 
 === DOCUMENT TO ANALYZE ===
-${text.substring(0, 30000)}
+${text.substring(0, 500000)}
 
 === REQUIRED STRUCTURE ===
 # 📝 Detailed Study Notes
@@ -72,7 +73,7 @@ Make these notes incredibly valuable for a university student preparing for a fi
 Format the output in clean, beautiful Markdown. Use bullet points, bold text for emphasis, and clear hierarchical headings. Focus strictly on extracting high-yield, straight-to-the-point information.
 
 === DOCUMENT TO ANALYZE ===
-${text.substring(0, 30000)}
+${text.substring(0, 500000)}
 
 === REQUIRED STRUCTURE ===
 # 📝 Concise Study Notes
@@ -118,7 +119,7 @@ Ensure the formatting consists of short sentences and extremely high readability
   }
 
   // For large documents: chunk and summarize
-  async summarizeLargeDocument(text) {
+  async summarizeLargeDocument(text, style = "detailed") {
     const chunkSize = 25000; // ~6,250 tokens per chunk
     const chunks = this.splitIntoChunks(text, chunkSize);
 
@@ -162,39 +163,66 @@ Be concise but thorough.`;
     console.log("🔗 Combining chunk summaries...");
 
     // Now create a final summary from all chunk summaries
-    const finalPrompt = `You are combining ${chunks.length} section summaries into one comprehensive document summary.
+    let finalPrompt = `You are combining ${chunks.length} section summaries into one comprehensive document summary.`;
+
+    if (style === "concise") {
+      finalPrompt += `
 
 === SECTION SUMMARIES ===
-${chunkSummaries
-  .map(
-    (s, i) => `**Section ${i + 1}:**
-${s}`,
-  )
-  .join("\n\n")}
+${chunkSummaries.map((s, i) => `**Section ${i + 1}:**\n${s}`).join("\n\n")}
 
 === CREATE FINAL SUMMARY ===
-Combine these sections into a well-structured overall summary:
+Combine these sections into a highly polished, concise "High-Yield" summary:
 
-# 📚 Complete Document Summary
+# 📝 Concise Study Notes
 
-## 🎯 Overall Topic & Purpose
-[What this entire document covers]
+## 🎯 High-Yield Summary
+[1-2 short, punchy paragraphs explaining the core essence of the document]
 
-## 🔑 Key Concepts Across All Sections
-[Main ideas from all sections combined]
+## 🔑 Core Concepts
+- **[Concept 1]:** [Clear, concise 1-sentence definition]
+- **[Concept 2]:** [Clear, concise 1-sentence definition]
+(Extract 5-8 crucial concepts)
 
-## 📖 Important Details & Findings
-[Crucial information from the document]
+## 📌 Critical Details
+- [Bullet point with important fact, date, or statistic]
+(Extract 5-8 critical details)
 
-## 🔗 Connections & Flow
-[How sections relate to each other]
+Ensure the formatting consists of short sentences and extremely high readability.`;
+    } else {
+      finalPrompt += `
 
-## ✅ Main Takeaways
-[Most important points to remember]
+=== SECTION SUMMARIES ===
+${chunkSummaries.map((s, i) => `**Section ${i + 1}:**\n${s}`).join("\n\n")}
 
-Make it cohesive, comprehensive, and well-formatted.`;
+=== CREATE FINAL SUMMARY ===
+Combine these sections into a highly detailed, exhaustive "Cornell-Style" summary:
 
-    const finalResponse = await aiService.generateResponse(finalPrompt);
+# 📝 Detailed Study Notes
+
+## 🎯 Executive Overview
+[3-4 detailed paragraphs explaining the overarching theme, context, and purpose of the text. Do not skip details.]
+
+## 📚 Comprehensive Chapter / Section Breakdown
+[For each major section or theme, provide a detailed breakdown:]
+### [Section/Theme Name]
+- **[Concept/Term]:** [Thorough explanation detailing how it works, why it matters, and examples]
+(Extract at least 10-15 concepts across all sections)
+
+## 📌 Critical Facts, Dates & Data
+- [Bullet point with exact data, statistic, equation, or important fact]
+(Extract all critical factual details)
+
+## 💡 Practical Application / Synthesis
+[2 detailed paragraphs explaining real-world applications or synthesizing the grand takeaway.]
+
+Make these notes incredibly valuable for a university student. Do not miss crucial information.`;
+    }
+
+    const finalResponse = await aiService.generateResponse(finalPrompt, {
+      subject: "general",
+      complexity: "intermediate",
+    });
 
     console.log("✅ Large document summarization completed");
 
@@ -216,6 +244,19 @@ Make it cohesive, comprehensive, and well-formatted.`;
     let currentChunk = "";
 
     for (const paragraph of paragraphs) {
+      // If the paragraph itself is larger than the chunkSize, split it by characters
+      if (paragraph.length > chunkSize) {
+        // Push the current chunk if it exists
+        if (currentChunk) {
+          chunks.push(currentChunk.trim());
+          currentChunk = "";
+        }
+        for (let i = 0; i < paragraph.length; i += chunkSize) {
+          chunks.push(paragraph.substring(i, i + chunkSize));
+        }
+        continue;
+      }
+
       if ((currentChunk + paragraph).length <= chunkSize) {
         currentChunk += paragraph + "\n\n";
       } else {

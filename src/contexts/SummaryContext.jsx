@@ -21,8 +21,10 @@ export const SummaryProvider = ({ children }) => {
       const materials =
         await studyMaterialGenerator.generateStudyMaterials(documentText);
       setStudyMaterials(materials);
+      return materials;
     } catch (err) {
       console.error("Failed to generate materials in context:", err);
+      throw err; // Propagate error back to the page UI
     }
   };
 

@@ -21,7 +21,7 @@ Return carefully formatted JSON ONLY. The JSON must be an array of objects match
 Note: Ensure correctAnswer is the integer index of the correct option (0, 1, 2, or 3). Shuffle the correct option randomly! 
 
 === SOURCE TEXT ===
-${documentText.substring(0, 30000)}
+${documentText.substring(0, 500000)}
 `;
 
     try {
@@ -54,8 +54,8 @@ ${documentText.substring(0, 30000)}
         questions = JSON.parse(jsonMatch[0]);
       }
 
-      if (!Array.isArray(questions))
-        throw new Error("Parsed result is not an array");
+      if (!Array.isArray(questions) || questions.length === 0)
+        throw new Error("Parsed result is not a valid array of questions");
 
       return questions.map((q, i) => ({
         id: i + 1,
@@ -87,7 +87,7 @@ Return carefully formatted JSON ONLY. The JSON must be an array of objects match
 ]
 
 === SOURCE TEXT ===
-${documentText.substring(0, 30000)}
+${documentText.substring(0, 500000)}
 `;
 
     try {
@@ -117,8 +117,8 @@ ${documentText.substring(0, 30000)}
         flashcards = JSON.parse(jsonMatch[0]);
       }
 
-      if (!Array.isArray(flashcards))
-        throw new Error("Parsed result is not an array");
+      if (!Array.isArray(flashcards) || flashcards.length === 0)
+        throw new Error("Parsed result is not a valid array of flashcards");
 
       return flashcards.map((f, i) => ({
         id: i + 1,
