@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSummary } from "../contexts/SummaryContext";
-import qnaService from "../services/qnaService";
+import ragTutorService from "../services/ragTutorService";
 import documentStorage from "../services/simpleDocumentStorage";
 import summarizationService from "../services/summarizationService";
 import { useDropzone } from "react-dropzone";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
 import {
   DocumentTextIcon,
   AcademicCapIcon,
@@ -137,6 +138,7 @@ const StudyGuide = () => {
     setFlippedCard(null);
     setQnaHistory([]);
     setCurrentQuestion("");
+    ragTutorService.resetConversation();
 
     try {
       let textToUse = docObj.textContent;
@@ -198,6 +200,7 @@ const StudyGuide = () => {
       setFlippedCard(null);
       setQnaHistory([]);
       setCurrentQuestion("");
+      ragTutorService.resetConversation();
 
       try {
         const storeResult = await documentStorage.storeDocument(
@@ -300,10 +303,25 @@ const StudyGuide = () => {
   const shuffleFlashcards = () => setFlippedCard(null);
 
   const generateAnswer = async (question) => {
-    if (!question.trim() || !summary) return;
+    if (!question.trim()) return;
+    if (!currentDocText) {
+      const warnQnA = {
+        id: Date.now(),
+        question: question.trim(),
+        answer: "⚠️ Please upload a document first so I can answer questions about it!",
+        timestamp: new Date().toLocaleTimeString(),
+        type: "error",
+      };
+      setQnaHistory((prev) => [...prev, warnQnA]);
+      return;
+    }
     setIsLoadingAnswer(true);
     try {
-      const answer = await qnaService.generateAnswer(question, summary);
+      const answer = await ragTutorService.generateAnswer(
+        question,
+        currentDocText,
+        qnaHistory.map((q) => ({ question: q.question, answer: q.answer })),
+      );
       const newQnA = {
         id: Date.now(),
         question: question.trim(),
@@ -314,11 +332,12 @@ const StudyGuide = () => {
       setQnaHistory((prev) => [...prev, newQnA]);
       setCurrentQuestion("");
     } catch (error) {
+      console.error("RAG Tutor Error:", error);
       const errorQnA = {
         id: Date.now(),
         question: question.trim(),
         answer:
-          "I apologize, but I'm having trouble processing your question right now.",
+          "I'm sorry, I had trouble generating an answer. Please try again in a moment.",
         timestamp: new Date().toLocaleTimeString(),
         type: "error",
       };
@@ -334,13 +353,8 @@ const StudyGuide = () => {
   };
 
   const getSmartQuestionSuggestions = () => {
-    if (!summary) return [];
-    return [
-      "What is the most critical takeaway from this document?",
-      "Can you explain the most complex concept in simple terms?",
-      "What are the main definitions I should memorize?",
-      "How can I apply this knowledge practically?",
-    ];
+    if (!currentDocText && !summary) return [];
+    return ragTutorService.getSmartSuggestions(currentDocText || "");
   };
 
   const tabs = [
@@ -904,11 +918,30 @@ const StudyGuide = () => {
                                       AI Tutor
                                     </span>
                                   </div>
-                                  <p
-                                    className={`text-lg leading-relaxed ${qna.type === "error" ? "text-red-200" : "text-gray-200"}`}
+                                    <div
+                                    className={`text-base leading-relaxed ${qna.type === "error" ? "text-red-200" : "text-gray-200"}`}
                                   >
-                                    {qna.answer}
-                                  </p>
+                                    <ReactMarkdown
+                                      components={{
+                                        h1: ({ children }) => <h1 className="text-xl font-bold text-blue-200 mt-4 mb-2">{children}</h1>,
+                                        h2: ({ children }) => <h2 className="text-lg font-bold text-blue-300 mt-4 mb-2">{children}</h2>,
+                                        h3: ({ children }) => <h3 className="text-base font-bold text-blue-300 mt-3 mb-1">{children}</h3>,
+                                        h4: ({ children }) => <h4 className="text-sm font-bold text-blue-400 mt-2 mb-1">{children}</h4>,
+                                        p: ({ children }) => <p className="my-2">{children}</p>,
+                                        strong: ({ children }) => <strong className="text-white font-semibold">{children}</strong>,
+                                        em: ({ children }) => <em className="text-blue-200 italic">{children}</em>,
+                                        ul: ({ children }) => <ul className="list-disc ml-5 my-2 space-y-1">{children}</ul>,
+                                        ol: ({ children }) => <ol className="list-decimal ml-5 my-2 space-y-1">{children}</ol>,
+                                        li: ({ children }) => <li className="text-gray-200">{children}</li>,
+                                        code: ({ children, inline }) => inline
+                                          ? <code className="bg-white/10 text-cyan-300 px-1.5 py-0.5 rounded text-sm">{children}</code>
+                                          : <pre className="bg-black/40 border border-white/10 rounded-xl p-4 my-3 overflow-x-auto"><code className="text-cyan-300 text-sm">{children}</code></pre>,
+                                        blockquote: ({ children }) => <blockquote className="border-l-4 border-blue-500/50 pl-4 my-3 text-gray-300 italic">{children}</blockquote>,
+                                      }}
+                                    >
+                                      {qna.answer || ""}
+                                    </ReactMarkdown>
+                                  </div>
                                 </div>
                               </div>
                             </div>

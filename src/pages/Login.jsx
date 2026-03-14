@@ -27,7 +27,7 @@ const Login = () => {
     const result = login(email, password)
     
     if (result.success) {
-      navigate('/dashboard')
+      navigate('/study-guide')
     } else {
       setError(result.error)
     }

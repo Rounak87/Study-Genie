@@ -1,52 +1,110 @@
-import { useState } from 'react'
-import { motion } from 'framer-motion'
-import { PaperAirplaneIcon, UserIcon, ChatBubbleLeftIcon } from '@heroicons/react/24/outline'
+import { useState } from "react";
+import { useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
+import {
+  PaperAirplaneIcon,
+  UserIcon,
+  ChatBubbleLeftIcon,
+} from "@heroicons/react/24/outline";
+import aiService from "../services/aiService";
 
 const AITutor = () => {
+  const location = useLocation();
   const [messages, setMessages] = useState([
     {
       id: 1,
-      type: 'bot',
-      content: "Hello! I'm your AI tutor. I can help you understand concepts from your uploaded materials. What would you like to learn about today?",
-      timestamp: new Date()
-    }
-  ])
-  const [inputValue, setInputValue] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
+      type: "bot",
+      content:
+        "Hello! I'm your AI tutor. I can help you understand concepts from your uploaded materials. What would you like to learn about today?",
+      timestamp: new Date(),
+    },
+  ]);
+  const [inputValue, setInputValue] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim()) return
+    if (!inputValue.trim()) return;
 
     const userMessage = {
       id: Date.now(),
-      type: 'user',
+      type: "user",
       content: inputValue,
-      timestamp: new Date()
-    }
+      timestamp: new Date(),
+    };
 
-    setMessages(prev => [...prev, userMessage])
-    setInputValue('')
-    setIsTyping(true)
+    setMessages((prev) => [...prev, userMessage]);
+    setInputValue("");
+    setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
+    // Call real AI Service
+    try {
+      const locationState = location.state || {};
+      let documentContext = locationState.documentContext || null;
+      let activeDocumentId = locationState.documentId || null;
+
+      // If no document context provided via navigation, grab the most recent one
+      if (!activeDocumentId) {
+        try {
+          // Dynamically import documentStorage to avoid circular dependencies
+          const { documentStorage } =
+            await import("../services/documentStorage");
+          const docs = await documentStorage.getAllDocuments();
+
+          if (docs && docs.length > 0) {
+            // Sort to get the newest document
+            const recentDoc = docs.sort(
+              (a, b) => new Date(b.uploadDate) - new Date(a.uploadDate),
+            )[0];
+            activeDocumentId = recentDoc.id;
+
+            const textContext = await documentStorage.getTextContent(
+              recentDoc.id,
+            );
+            if (textContext && textContext.textContent) {
+              documentContext = true; // Trigger RAG
+            }
+          }
+        } catch (err) {
+          console.warn("Could not load recent document for AI Tutor:", err);
+        }
+      }
+
+      const responseText = await aiService.generateResponse(inputValue, {
+        conversationHistory: messages
+          .slice(-5)
+          .map((m) => ({ sender: m.type, text: m.content })),
+        documentContext: documentContext,
+        activeDocumentId: activeDocumentId,
+      });
+
       const botMessage = {
         id: Date.now() + 1,
-        type: 'bot',
-        content: `I understand you're asking about "${inputValue}". Based on your uploaded materials, I can provide a detailed explanation. This is a simulated response - in the real application, this would be powered by RAG technology using your specific study materials.`,
-        timestamp: new Date()
-      }
-      setMessages(prev => [...prev, botMessage])
-      setIsTyping(false)
-    }, 2000)
-  }
+        type: "bot",
+        content: responseText.answer || responseText,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (error) {
+      console.error("AI Error:", error);
+      const errorMessage = {
+        id: Date.now() + 1,
+        type: "bot",
+        content:
+          "I'm sorry, I encountered an error connecting to my brain. Please try again.",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
 
   const handleKeyPress = (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSendMessage()
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
@@ -58,7 +116,9 @@ const AITutor = () => {
               <ChatBubbleLeftIcon className="w-8 h-8 text-indigo-600 mr-3" />
               AI Tutor
             </h1>
-            <p className="text-gray-600 mt-1">Ask questions about your study materials</p>
+            <p className="text-gray-600 mt-1">
+              Ask questions about your study materials
+            </p>
           </div>
 
           {/* Messages */}
@@ -68,27 +128,39 @@ const AITutor = () => {
                 key={message.id}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'}`}
+                className={`flex ${message.type === "user" ? "justify-end" : "justify-start"}`}
               >
-                <div className={`flex max-w-xs lg:max-w-md ${message.type === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                    message.type === 'user' ? 'bg-indigo-600 ml-2' : 'bg-gray-300 mr-2'
-                  }`}>
-                    {message.type === 'user' ? (
+                <div
+                  className={`flex max-w-xs lg:max-w-md ${message.type === "user" ? "flex-row-reverse" : "flex-row"}`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                      message.type === "user"
+                        ? "bg-indigo-600 ml-2"
+                        : "bg-gray-300 mr-2"
+                    }`}
+                  >
+                    {message.type === "user" ? (
                       <UserIcon className="w-5 h-5 text-white" />
                     ) : (
                       <ChatBubbleLeftIcon className="w-5 h-5 text-gray-600" />
                     )}
                   </div>
-                  <div className={`px-4 py-2 rounded-lg ${
-                    message.type === 'user' 
-                      ? 'bg-indigo-600 text-white' 
-                      : 'bg-gray-100 text-gray-900'
-                  }`}>
+                  <div
+                    className={`px-4 py-2 rounded-lg ${
+                      message.type === "user"
+                        ? "bg-indigo-600 text-white"
+                        : "bg-gray-100 text-gray-900"
+                    }`}
+                  >
                     <p className="text-sm">{message.content}</p>
-                    <p className={`text-xs mt-1 ${
-                      message.type === 'user' ? 'text-indigo-200' : 'text-gray-500'
-                    }`}>
+                    <p
+                      className={`text-xs mt-1 ${
+                        message.type === "user"
+                          ? "text-indigo-200"
+                          : "text-gray-500"
+                      }`}
+                    >
                       {message.timestamp.toLocaleTimeString()}
                     </p>
                   </div>
@@ -109,8 +181,14 @@ const AITutor = () => {
                   <div className="bg-gray-100 rounded-lg px-4 py-2">
                     <div className="flex space-x-1">
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                      <div className="w-2 h-2 bg-gray-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                      <div
+                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.1s" }}
+                      ></div>
+                      <div
+                        className="w-2 h-2 bg-gray-500 rounded-full animate-bounce"
+                        style={{ animationDelay: "0.2s" }}
+                      ></div>
                     </div>
                   </div>
                 </div>
@@ -141,7 +219,7 @@ const AITutor = () => {
         </div>
       </div>
     </div>
-  )
-}
+  );
+};
 
-export default AITutor
+export default AITutor;

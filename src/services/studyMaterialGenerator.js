@@ -25,33 +25,61 @@ ${documentText.substring(0, 500000)}
 `;
 
     try {
-      console.log("🤖 Generating Quiz via Gemini...");
-      const response = await aiService.model.generateContent(prompt);
-      const text = response.response.text();
+      console.log("🤖 Generating Quiz via Gemini [Primary]...");
+      
+      const config = {
+        responseMimeType: "application/json",
+        temperature: 0.7,
+      };
+      
+      const primaryModel = aiService.genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: config,
+      });
+      const fallbackModel = aiService.genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: config,
+      });
+
+      let text = "";
+      try {
+        const response = await primaryModel.generateContent(prompt);
+        text = response.response.text();
+      } catch (err) {
+        const isQuotaError = 
+          err?.status === 429 || 
+          err?.message?.toLowerCase().includes("quota") || 
+          err?.message?.toLowerCase().includes("rate limit") ||
+          err?.message?.toLowerCase().includes("exhausted");
+        
+        if (isQuotaError) {
+          console.warn("⚠️ Primary Gemini model quota exceeded for Quiz! Switching to Flash-Lite backup...");
+          const fallbackResponse = await fallbackModel.generateContent(prompt);
+          text = fallbackResponse.response.text();
+        } else {
+          throw err;
+        }
+      }
 
       let questions = [];
 
       try {
-        // Try direct parsing first
-        const cleaned = text
-          .replace(/```json/g, "")
-          .replace(/```/g, "")
-          .trim();
-        questions = JSON.parse(cleaned);
+        // Find the first '[' and last ']' to extract purely the JSON array
+        const startIdx = text.indexOf("[");
+        const endIdx = text.lastIndexOf("]");
 
-        // If it's wrapped in an object like { "questions": [...] }
-        if (!Array.isArray(questions) && typeof questions === "object") {
-          const possibleArray = Object.values(questions).find((val) =>
-            Array.isArray(val),
-          );
-          if (possibleArray) questions = possibleArray;
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          let jsonStr = text.substring(startIdx, endIdx + 1);
+          // Quick fix for trailing commas before closing brackets
+          jsonStr = jsonStr.replace(/,\s*]/g, "]");
+          jsonStr = jsonStr.replace(/,\s*}/g, "}");
+          questions = JSON.parse(jsonStr);
+        } else {
+          throw new Error("Could not find array brackets");
         }
-      } catch (parseErr) {
-        // Fallback: extract array using regex
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (!jsonMatch)
-          throw new Error("Could not find JSON array in response");
-        questions = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.error("JSON parsing error:", parseError);
+        console.log("Raw Gemini Response:", text);
       }
 
       if (!Array.isArray(questions) || questions.length === 0)
@@ -91,30 +119,60 @@ ${documentText.substring(0, 500000)}
 `;
 
     try {
-      console.log("🤖 Generating Flashcards via Gemini...");
-      const response = await aiService.model.generateContent(prompt);
-      const text = response.response.text();
+      console.log("🤖 Generating Flashcards via Gemini [Primary]...");
+      
+      const config = {
+        responseMimeType: "application/json",
+        temperature: 0.7,
+      };
+      
+      const primaryModel = aiService.genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: config,
+      });
+      const fallbackModel = aiService.genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: config,
+      });
+
+      let text = "";
+      try {
+        const response = await primaryModel.generateContent(prompt);
+        text = response.response.text();
+      } catch (err) {
+        const isQuotaError = 
+          err?.status === 429 || 
+          err?.message?.toLowerCase().includes("quota") || 
+          err?.message?.toLowerCase().includes("rate limit") ||
+          err?.message?.toLowerCase().includes("exhausted");
+        
+        if (isQuotaError) {
+          console.warn("⚠️ Primary Gemini model quota exceeded for Flashcards! Switching to Flash-Lite backup...");
+          const fallbackResponse = await fallbackModel.generateContent(prompt);
+          text = fallbackResponse.response.text();
+        } else {
+          throw err;
+        }
+      }
 
       let flashcards = [];
 
       try {
-        const cleaned = text
-          .replace(/```json/g, "")
-          .replace(/```/g, "")
-          .trim();
-        flashcards = JSON.parse(cleaned);
+        const startIdx = text.indexOf("[");
+        const endIdx = text.lastIndexOf("]");
 
-        if (!Array.isArray(flashcards) && typeof flashcards === "object") {
-          const possibleArray = Object.values(flashcards).find((val) =>
-            Array.isArray(val),
-          );
-          if (possibleArray) flashcards = possibleArray;
+        if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+          let jsonStr = text.substring(startIdx, endIdx + 1);
+          // Quick fix for trailing commas before closing brackets
+          jsonStr = jsonStr.replace(/,\s*]/g, "]");
+          jsonStr = jsonStr.replace(/,\s*}/g, "}");
+          flashcards = JSON.parse(jsonStr);
+        } else {
+          throw new Error("Could not find array brackets");
         }
-      } catch (parseErr) {
-        const jsonMatch = text.match(/\[[\s\S]*\]/);
-        if (!jsonMatch)
-          throw new Error("Could not find JSON array in response");
-        flashcards = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.error("Flashcard JSON parsing error:", parseError);
+        console.log("Raw Gemini Response:", text);
       }
 
       if (!Array.isArray(flashcards) || flashcards.length === 0)

@@ -52,7 +52,7 @@ const Signup = () => {
     const result = signup(formData.name, formData.email, formData.password)
     
     if (result.success) {
-      navigate('/dashboard')
+      navigate('/study-guide')
     } else {
       setError(result.error)
     }
