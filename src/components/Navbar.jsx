@@ -7,8 +7,6 @@ import SignupModal from "./SignupModal";
 import {
   HomeIcon,
   DocumentTextIcon,
-  ChartBarIcon,
-  AcademicCapIcon,
   ChatBubbleLeftRightIcon,
   DocumentArrowUpIcon,
   MapIcon,
@@ -28,10 +26,8 @@ const Navbar = () => {
 
   const navigation = [
     { name: "Home", href: "/", icon: HomeIcon },
-    { name: "Dashboard", href: "/dashboard", icon: ChartBarIcon },
     { name: "Roadmap", href: "/roadmap", icon: MapIcon },
     { name: "Study Guide", href: "/study-guide", icon: DocumentTextIcon },
-    { name: "Analytics", href: "/analytics", icon: AcademicCapIcon },
     { name: "Visualization", href: "/visualization", icon: BeakerIcon },
     { name: "Community", href: "/community", icon: ChatBubbleLeftRightIcon },
   ];

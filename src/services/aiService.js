@@ -1,5 +1,6 @@
 // AI Service using Google Gemini for educational assistance
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { documentStorage } from "./documentStorage";
 
 class AIService {
   constructor() {
@@ -7,19 +8,29 @@ class AIService {
 
     if (geminiKey) {
       this.genAI = new GoogleGenerativeAI(geminiKey);
+      
+      const config = {
+        temperature: 0.7,
+        topP: 0.95,
+        topK: 40,
+        maxOutputTokens: 8192,
+      };
+
       this.model = this.genAI.getGenerativeModel({
         model: "gemini-2.5-flash",
-        generationConfig: {
-          temperature: 0.7,
-          topP: 0.95,
-          topK: 40,
-          maxOutputTokens: 8192,
-        },
+        generationConfig: config,
       });
+
+      this.fallbackModel = this.genAI.getGenerativeModel({
+        model: "gemini-2.5-flash-lite",
+        generationConfig: config,
+      });
+
       this.workingModelName = "gemini-2.5-flash";
-      console.log("✅ Gemini 2.5 Flash initialized successfully");
+      console.log("✅ Gemini 2.5 Flash initialized successfully (with Flash-Lite fallback)");
     } else {
       this.model = null;
+      this.fallbackModel = null;
       console.log("⚠️ No Gemini API key found");
     }
   }
@@ -51,8 +62,50 @@ Complexity level: ${complexity}
 
 `;
 
-    // Add document context if available
-    if (context.documentSummary) {
+    // ADD RAG CONTEXT IF AVAILABLE
+    if (context.documentContext && context.activeDocumentId) {
+      try {
+        console.log(
+          `🔍 RAG: Searching for chunks related to: "${question}" in document ${context.activeDocumentId}`,
+        );
+        const relevantChunks = await documentStorage.searchSimilarChunks(
+          question,
+          context.activeDocumentId,
+          4,
+        );
+
+        if (relevantChunks && relevantChunks.length > 0) {
+          console.log(`✅ RAG: Found ${relevantChunks.length} relevant chunks`);
+
+          let combinedContext = relevantChunks
+            .map((chunk, i) => `[Excerpt ${i + 1}]:\n${chunk.text}`)
+            .join("\n\n");
+
+          prompt += `\nRelevant document excerpts from the user's uploaded text:\n${combinedContext}\n`;
+          prompt += `\nINSTRUCTIONS FOR USING EXCERPTS: Use the excerpts above to answer the student's question accurately. If the excerpts do not contain the answer, politely let the student know you cannot find the exact answer in the provided document.\n`;
+        } else {
+          console.log(
+            `⚠️ RAG: No highly relevant chunks found, falling back to summary`,
+          );
+          const summaryPreview =
+            typeof context.documentSummary === "string"
+              ? context.documentSummary.substring(0, 1000)
+              : JSON.stringify(context.documentSummary).substring(0, 1000);
+          prompt += `\nRelevant overall document summary:\n${summaryPreview}\n`;
+        }
+      } catch (ragError) {
+        console.error("❌ RAG Error during retrieval:", ragError);
+        // Fallback to basic summary if RAG fails
+        if (context.documentSummary) {
+          const summaryPreview =
+            typeof context.documentSummary === "string"
+              ? context.documentSummary.substring(0, 1000)
+              : JSON.stringify(context.documentSummary).substring(0, 1000);
+          prompt += `\nRelevant document content:\n${summaryPreview}\n`;
+        }
+      }
+    } else if (context.documentSummary) {
+      // Legacy basic context injection
       const summaryPreview =
         typeof context.documentSummary === "string"
           ? context.documentSummary.substring(0, 1000)
@@ -72,7 +125,7 @@ Complexity level: ${complexity}
     prompt += `\nProvide a clear, educational response suitable for a student. Use examples and step-by-step explanations when helpful. Keep the response concise (under 200 words).`;
 
     try {
-      console.log("🚀 Calling Gemini API...");
+      console.log("🚀 Calling Gemini API [Primary: Flash]...");
       const result = await this.model.generateContent(prompt);
       const response = await result.response;
       const answer = response.text();
@@ -84,10 +137,39 @@ Complexity level: ${complexity}
         subject: subject,
         complexity: complexity,
         confidence: 0.95,
-        source: "gemini",
+        source: "gemini-flash",
         timestamp: new Date().toISOString(),
       };
     } catch (error) {
+      const isQuotaError = 
+        error?.status === 429 || 
+        error?.message?.toLowerCase().includes("quota") || 
+        error?.message?.toLowerCase().includes("rate limit") ||
+        error?.message?.toLowerCase().includes("exhausted");
+
+      if (isQuotaError && this.fallbackModel) {
+        console.warn("⚠️ Primary Gemini model quota exceeded! Switching to Flash-Lite backup...");
+        try {
+          const fallbackResult = await this.fallbackModel.generateContent(prompt);
+          const fallbackResponse = await fallbackResult.response;
+          const fallbackAnswer = fallbackResponse.text();
+
+          console.log("✅ Gemini API fallback response received");
+
+          return {
+            answer: fallbackAnswer.trim(),
+            subject: subject,
+            complexity: complexity,
+            confidence: 0.90, // Slightly lower confidence for lite model
+            source: "gemini-flash-lite",
+            timestamp: new Date().toISOString(),
+          };
+        } catch (fallbackError) {
+          console.error("❌ Gemini API Fallback Error:", fallbackError.message);
+          throw new Error(`Gemini API failed entirely (even fallback): ${fallbackError.message}`);
+        }
+      }
+
       console.error("❌ Gemini API Error:", error.message);
       throw new Error(`Gemini API failed: ${error.message}`);
     }
