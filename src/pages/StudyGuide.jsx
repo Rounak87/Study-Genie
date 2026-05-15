@@ -42,12 +42,14 @@ const StudyGuide = () => {
     summary,
     setSummary,
     studyMaterials,
+    setStudyMaterials,
     generateStudyMaterials,
     clearStudyMaterials,
   } = useSummary();
 
   const [notesStyle, setNotesStyle] = useState("detailed");
   const [currentDocText, setCurrentDocText] = useState("");
+  const [activeDocId, setActiveDocId] = useState(null);
 
   // Processing State
   const [isProcessing, setIsProcessing] = useState(false);
@@ -117,6 +119,14 @@ const StudyGuide = () => {
           ? sumResult.summary
           : sumResult.summary?.summary;
       setSummary(generatedSummary);
+      
+      if (activeDocId) {
+        await documentStorage.updateAiResults(activeDocId, {
+          summaries: { [notesStyle]: generatedSummary }
+        });
+        loadHistory();
+      }
+
       setTimeout(() => setIsProcessing(false), 500);
     } catch (err) {
       alert("Error generating notes: " + err.message);
@@ -148,23 +158,53 @@ const StudyGuide = () => {
       }
 
       setCurrentDocText(textToUse);
+      setActiveDocId(docObj.id);
+
+      const cachedSummary = docObj.summaries && docObj.summaries[notesStyle];
+      const cachedMaterials = docObj.studyMaterials && docObj.studyMaterials.isGenerated;
+
+      if (cachedSummary && cachedMaterials) {
+        setProcessingStage(`Loading cached ${notesStyle} notes and materials...`);
+        setProcessingProgress(90);
+        setSummary(cachedSummary);
+        setStudyMaterials(docObj.studyMaterials);
+        setProcessingProgress(100);
+        setProcessingStage("Done!");
+        setTimeout(() => {
+          setIsProcessing(false);
+          setActiveTab("summaries");
+          setCurrentQuestionIndex(0);
+          setScore({ correct: 0, total: 0 });
+          setShowAnswer(false);
+          setSelectedAnswer(null);
+        }, 500);
+        return;
+      }
 
       setProcessingStage(`Generating ${notesStyle} study notes...`);
       setProcessingProgress(50);
-      const sumResult = await summarizationService.summarizeText(
-        textToUse,
-        notesStyle,
-      );
-      if (!sumResult.success)
-        throw new Error(sumResult.error || "Failed to generate notes.");
+      let finalSummary = cachedSummary;
+      if (!cachedSummary) {
+        const sumResult = await summarizationService.summarizeText(textToUse, notesStyle);
+        if (!sumResult.success) throw new Error(sumResult.error || "Failed to generate notes.");
+        finalSummary = typeof sumResult.summary === "string" ? sumResult.summary : sumResult.summary?.summary;
+      }
+      setSummary(finalSummary);
 
-      setSummary(sumResult.summary);
+      let finalMaterials = docObj.studyMaterials;
+      if (!cachedMaterials) {
+        setProcessingStage("Crafting exact questions and flashcards from source...");
+        setProcessingProgress(75);
+        finalMaterials = await generateStudyMaterials(textToUse);
+      } else {
+        setStudyMaterials(finalMaterials);
+      }
 
-      setProcessingStage(
-        "Crafting exact questions and flashcards from source...",
-      );
-      setProcessingProgress(75);
-      await generateStudyMaterials(textToUse);
+      await documentStorage.updateAiResults(docObj.id, {
+        summaries: { [notesStyle]: finalSummary },
+        studyMaterials: finalMaterials
+      });
+      loadHistory();
 
       setProcessingProgress(100);
       setProcessingStage("Done!");
@@ -220,6 +260,7 @@ const StudyGuide = () => {
         const textData = await documentStorage.getDocumentText(docId);
 
         setCurrentDocText(textData.textContent);
+        setActiveDocId(docId);
 
         // Refresh history to show new doc
         loadHistory();
@@ -247,7 +288,14 @@ const StudyGuide = () => {
         );
         setProcessingProgress(85);
         // PASS RAW TEXT TO GENERATOR, NOT SUMMARY
-        await generateStudyMaterials(textData.textContent);
+        const generatedMaterials = await generateStudyMaterials(textData.textContent);
+
+        await documentStorage.updateAiResults(docId, {
+          summaries: { [notesStyle]: generatedSummary },
+          studyMaterials: generatedMaterials
+        });
+        
+        loadHistory();
 
         setProcessingProgress(100);
         setProcessingStage("Done!");
@@ -261,7 +309,7 @@ const StudyGuide = () => {
         setIsProcessing(false);
       }
     },
-    [clearStudyMaterials, setSummary, generateStudyMaterials, notesStyle],
+    [clearStudyMaterials, setSummary, setStudyMaterials, generateStudyMaterials, notesStyle],
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({

@@ -393,6 +393,44 @@ class SimpleDocumentStorage {
     }
   }
 
+  // Save AI generated results to a document
+  async updateAiResults(documentId, aiData) {
+    try {
+      await this.initDB();
+      const document = await this.db.get('documents', documentId);
+      
+      if (!document) {
+        throw new Error('Document not found');
+      }
+      
+      if (document.userId !== this.userId) {
+        throw new Error('Access denied - document belongs to another user');
+      }
+
+      // Merge summaries safely
+      const updatedSummaries = {
+        ...(document.summaries || {}),
+        ...(aiData.summaries || {})
+      };
+
+      // Merge study materials if provided
+      const updatedStudyMaterials = aiData.studyMaterials || document.studyMaterials;
+
+      const updatedDocument = {
+        ...document,
+        summaries: updatedSummaries,
+        studyMaterials: updatedStudyMaterials,
+        lastAiInteraction: new Date().toISOString()
+      };
+
+      await this.db.put('documents', updatedDocument);
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating AI results:', error);
+      throw error;
+    }
+  }
+
   // Get all documents for current user
   async getAllDocuments() {
     try {
