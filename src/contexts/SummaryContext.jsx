@@ -43,6 +43,7 @@ export const SummaryProvider = ({ children }) => {
         summary,
         setSummary,
         studyMaterials,
+        setStudyMaterials,
         generateStudyMaterials,
         clearStudyMaterials,
         qnaHistory,

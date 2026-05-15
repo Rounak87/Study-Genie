@@ -1,0 +1,1147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StudyGenie ML — Learning Path Demo</title>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: "Inter", sans-serif;
+        background: #09090b;
+        color: #fafafa;
+        min-height: 100vh;
+        overflow-x: hidden;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 60px 20px;
+        position: relative;
+        z-index: 1;
+      }
+
+      /* ── Header ── */
+      .header {
+        text-align: center;
+        margin-bottom: 56px;
+      }
+      .header h1 {
+        font-size: 2.75rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 12px;
+        letter-spacing: -0.04em;
+      }
+      .header p {
+        color: #a1a1aa;
+        font-size: 1.1rem;
+        max-width: 500px;
+        margin: 0 auto;
+      }
+      .header .badge {
+        display: inline-block;
+        margin-top: 16px;
+        padding: 6px 14px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid rgba(59, 130, 246, 0.2);
+        border-radius: 6px;
+        font-size: 0.75rem;
+        color: #60a5fa;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* ── Quiz Card ── */
+      .quiz-card {
+        background: #121214;
+        border: 1px solid #27272a;
+        border-radius: 16px;
+        padding: 40px;
+        margin-bottom: 32px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+      }
+
+      .progress-bar-bg {
+        width: 100%;
+        height: 4px;
+        background: #27272a;
+        border-radius: 100px;
+        margin-bottom: 40px;
+        overflow: hidden;
+      }
+      .progress-bar-fill {
+        height: 100%;
+        background: #3b82f6;
+        border-radius: 100px;
+        transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+
+      .question-counter {
+        font-size: 0.75rem;
+        color: #71717a;
+        margin-bottom: 12px;
+        font-weight: 700;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+
+      .question-text {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #ffffff;
+        margin-bottom: 32px;
+        line-height: 1.4;
+        letter-spacing: -0.02em;
+      }
+
+      .difficulty-tag {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        margin-bottom: 20px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .difficulty-easy {
+        background: rgba(16, 185, 129, 0.1);
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+      }
+      .difficulty-medium {
+        background: rgba(245, 158, 11, 0.1);
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+      }
+      .difficulty-hard {
+        background: rgba(239, 68, 68, 0.1);
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.2);
+      }
+
+      /* ── Options ── */
+      .options {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      .option-btn {
+        width: 100%;
+        padding: 18px 24px;
+        background: #18181b;
+        border: 1px solid #27272a;
+        border-radius: 12px;
+        color: #d1d1d6;
+        font-size: 1rem;
+        font-family: "Inter", sans-serif;
+        cursor: pointer;
+        text-align: left;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        font-weight: 500;
+      }
+      .option-btn:hover {
+        border-color: #3f3f46;
+        background: #1f1f23;
+        transform: translateY(-1px);
+      }
+      .option-btn.selected {
+        background: rgba(59, 130, 246, 0.1);
+        border-color: #3b82f6;
+        color: #60a5fa;
+      }
+      .option-btn.correct {
+        background: rgba(16, 185, 129, 0.1);
+        border-color: #10b981;
+        color: #34d399;
+      }
+      .option-btn.wrong {
+        background: rgba(239, 68, 68, 0.1);
+        border-color: #ef4444;
+        color: #f87171;
+      }
+      .option-btn:disabled {
+        cursor: default;
+      }
+
+      .submit-btn {
+        margin-top: 32px;
+        width: 100%;
+        padding: 18px;
+        border-radius: 12px;
+        border: none;
+        font-family: "Inter", sans-serif;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        background: #3b82f6;
+        color: white;
+      }
+      .submit-btn:hover {
+        background: #2563eb;
+        transform: translateY(-1px);
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.4);
+      }
+      .submit-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+        transform: none;
+        box-shadow: none;
+      }
+
+      /* ── Timer ── */
+      .timer {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #71717a;
+        font-size: 0.85rem;
+        margin-bottom: 24px;
+        font-weight: 600;
+      }
+      .timer-dot {
+        width: 6px;
+        height: 6px;
+        background: #f87171;
+        border-radius: 50%;
+        animation: pulse 1.5s infinite;
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.4; }
+      }
+
+      /* ── Results ── */
+      .results-card {
+        background: #121214;
+        border: 1px solid #27272a;
+        border-radius: 16px;
+        padding: 48px;
+        text-align: center;
+        margin-bottom: 32px;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+      }
+      .score-display {
+        font-size: 4.5rem;
+        font-weight: 800;
+        color: #ffffff;
+        margin-bottom: 12px;
+        letter-spacing: -0.05em;
+      }
+      .score-label {
+        color: #a1a1aa;
+        font-size: 1.1rem;
+        margin-bottom: 40px;
+      }
+      .stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
+        margin-bottom: 40px;
+      }
+      .stat-item {
+        background: #18181b;
+        border-radius: 12px;
+        padding: 20px;
+        border: 1px solid #27272a;
+      }
+      .stat-item .value {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #ffffff;
+      }
+      .stat-item .label {
+        font-size: 0.75rem;
+        color: #71717a;
+        margin-top: 6px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+
+      /* ── Learning Path ── */
+      .path-section {
+        margin-top: 64px;
+      }
+      .path-title {
+        font-size: 1.75rem;
+        font-weight: 800;
+        text-align: center;
+        margin-bottom: 12px;
+        color: #ffffff;
+        letter-spacing: -0.03em;
+      }
+      .path-subtitle {
+        text-align: center;
+        color: #a1a1aa;
+        margin-bottom: 48px;
+        font-size: 1rem;
+      }
+      .mastery-bar-container {
+        margin: 0 auto 40px;
+        max-width: 450px;
+      }
+      .mastery-label {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.85rem;
+        color: #a1a1aa;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+      .mastery-bar-bg {
+        height: 8px;
+        background: #27272a;
+        border-radius: 100px;
+        overflow: hidden;
+      }
+      .mastery-bar-fill {
+        height: 100%;
+        border-radius: 100px;
+        transition: width 2s cubic-bezier(0.4, 0, 0.2, 1);
+      }
+      .mastery-low { background: #ef4444; }
+      .mastery-mid { background: #f59e0b; }
+      .mastery-high { background: #10b981; }
+
+      /* ── Path Timeline ── */
+      .path-timeline {
+        position: relative;
+        padding-left: 48px;
+      }
+      .path-timeline::before {
+        content: "";
+        position: absolute;
+        left: 19px;
+        top: 0;
+        bottom: 0;
+        width: 1px;
+        background: #27272a;
+      }
+      .path-step {
+        position: relative;
+        margin-bottom: 24px;
+        padding: 32px;
+        background: #121214;
+        border: 1px solid #27272a;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        animation: fadeInUp 0.6s ease forwards;
+        opacity: 0;
+      }
+      .path-step:hover {
+        border-color: #3f3f46;
+        background: #18181b;
+        transform: translateX(4px);
+      }
+      .path-step::before {
+        content: "";
+        position: absolute;
+        left: -33px;
+        top: 36px;
+        width: 10px;
+        height: 10px;
+        background: #3b82f6;
+        border-radius: 50%;
+        border: 2px solid #09090b;
+        box-shadow: 0 0 0 4px #121214;
+      }
+      .path-step .step-action {
+        font-size: 1.15rem;
+        font-weight: 700;
+        color: #ffffff;
+        margin-bottom: 8px;
+      }
+      .path-step .step-desc {
+        font-size: 0.95rem;
+        color: #a1a1aa;
+        line-height: 1.6;
+      }
+
+      @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+
+      .recommendation-badge {
+        display: inline-block;
+        padding: 8px 24px;
+        border-radius: 6px;
+        font-weight: 700;
+        font-size: 0.75rem;
+        margin-bottom: 24px;
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+      }
+      .rec-advance { background: rgba(16, 185, 129, 0.1); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.2); }
+      .rec-practice { background: rgba(245, 158, 11, 0.1); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.2); }
+      .rec-review { background: rgba(239, 68, 68, 0.1); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.2); }
+
+      .detail-text {
+        color: #a1a1aa;
+        font-size: 1rem;
+        line-height: 1.7;
+        margin-bottom: 40px;
+        text-align: center;
+        max-width: 650px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+
+      /* ── Loading ── */
+      .loading {
+        text-align: center;
+        padding: 80px 40px;
+      }
+      .spinner {
+        width: 32px;
+        height: 32px;
+        border: 2px solid #27272a;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+        margin: 0 auto 24px;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+
+      .retry-btn {
+        margin-top: 40px;
+        padding: 14px 32px;
+        border-radius: 8px;
+        border: 1px solid #27272a;
+        background: #18181b;
+        color: #ffffff;
+        font-family: "Inter", sans-serif;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+      .retry-btn:hover {
+        background: #27272a;
+        border-color: #3f3f46;
+      }
+
+      /* ── Subject Selection ── */
+      .subject-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        margin-top: 32px;
+      }
+      .subject-btn {
+        background: #121214;
+        border: 1px solid #27272a;
+        padding: 40px 24px;
+        border-radius: 12px;
+        color: #ffffff;
+        font-size: 1.15rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        text-align: center;
+      }
+      .subject-btn:hover {
+        border-color: #3b82f6;
+        background: #18181b;
+        transform: translateY(-4px);
+        box-shadow: 0 10px 30px -10px rgba(59, 130, 246, 0.2);
+      }
+
+      .hidden {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <!-- Header -->
+      <div class="header">
+        <h1>🧠 StudyGenie ML</h1>
+        <p>Deep Knowledge Tracing — Personalized Learning Path Demo</p>
+        <span class="badge">LSTM Neural Network • Domain-Agnostic</span>
+      </div>
+
+      <!-- Subject Selection Section -->
+      <div id="subject-section">
+        <h2 style="margin-bottom: 8px; text-align: center">
+          Choose a Subject to Begin
+        </h2>
+        <p style="color: #a1a1aa; text-align: center; margin-bottom: 40px">
+          The ML model doesn't care what subject you choose—it analyzes your behavior.
+        </p>
+
+        <div class="subject-grid">
+          <button class="subject-btn" onclick="startQuiz('ML')">
+            🧠 Machine Learning
+          </button>
+          <button class="subject-btn" onclick="startQuiz('CN')">
+            🌐 Computer Networks
+          </button>
+          <button class="subject-btn" onclick="startQuiz('OS')">
+            💻 Operating Systems
+          </button>
+          <button class="subject-btn" onclick="startQuiz('DBMS')">
+            🗄️ Database Systems
+          </button>
+        </div>
+      </div>
+
+      <!-- Quiz Section -->
+      <div id="quiz-section" class="hidden">
+        <div style="text-align: left; margin-bottom: 12px;">
+            <button onclick="resetQuiz()" style="background: none; border: none; color: #64748b; font-weight: 600; cursor: pointer; font-size: 0.9rem;">← Quit Quiz</button>
+        </div>
+        <div class="quiz-card">
+          <div class="progress-bar-bg">
+            <div
+              class="progress-bar-fill"
+              id="progress-fill"
+              style="width: 0%"
+            ></div>
+          </div>
+
+          <div class="timer" id="timer-display">
+            <span class="timer-dot"></span>
+            <span id="timer-text">0.0s</span>
+          </div>
+
+          <div class="question-counter" id="question-counter">
+            QUESTION 1 OF 5
+          </div>
+          <div id="difficulty-tag"></div>
+          <div class="question-text" id="question-text"></div>
+
+          <div class="options" id="options-container"></div>
+
+          <button
+            class="submit-btn"
+            id="submit-btn"
+            disabled
+            onclick="submitAnswer()"
+          >
+            Submit Answer
+          </button>
+        </div>
+      </div>
+
+      <!-- Loading Section -->
+      <div id="loading-section" class="hidden">
+        <div class="loading">
+          <div class="spinner"></div>
+          <p style="color: #64748b; font-weight: 500">
+            Analyzing your performance with LSTM model...
+          </p>
+        </div>
+      </div>
+
+      <!-- Results Section -->
+      <div id="results-section" class="hidden"></div>
+    </div>
+
+    <script>
+      // ══════════════════════════════════════════
+      // CONFIG
+      // ══════════════════════════════════════════
+      const GEMINI_API_KEY = "AIzaSyBeJRqL2jw5tfkexye-RMVndHCYRskmUHk";
+      const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+      // ══════════════════════════════════════════
+      // Quiz Question Banks
+      // ══════════════════════════════════════════
+      const QUESTION_BANKS = {
+        ML: [
+          {
+            question: "What problem does 'Dropout' solve in Neural Networks?",
+            options: [
+              "Underfitting",
+              "Overfitting",
+              "Slow compilation",
+              "Missing data",
+            ],
+            correct: 1,
+            difficulty: "medium",
+            topic: "Neural Networks",
+          },
+          {
+            question:
+              "Which algorithm is best suited for a binary classification problem?",
+            options: [
+              "Linear Regression",
+              "K-Means",
+              "Logistic Regression",
+              "PCA",
+            ],
+            correct: 2,
+            difficulty: "easy",
+            topic: "Classification",
+          },
+          {
+            question:
+              "What does the Learning Rate control in Gradient Descent?",
+            options: [
+              "Number of epochs",
+              "Size of the hidden layers",
+              "Step size during weight updates",
+              "The activation function",
+            ],
+            correct: 2,
+            difficulty: "medium",
+            topic: "Optimization",
+          },
+          {
+            question: "What is the purpose of a validation dataset?",
+            options: [
+              "To train the model parameters",
+              "To test the final model",
+              "To tune hyperparameters",
+              "To augment data",
+            ],
+            correct: 2,
+            difficulty: "hard",
+            topic: "Model Evaluation",
+          },
+          {
+            question:
+              "Which activation function outputs values between 0 and 1?",
+            options: ["ReLU", "Tanh", "Sigmoid", "Linear"],
+            correct: 2,
+            difficulty: "easy",
+            topic: "Activation Functions",
+          },
+        ],
+        CN: [
+          {
+            question: "Which layer of the OSI model handles routing?",
+            options: [
+              "Data Link Layer",
+              "Network Layer",
+              "Transport Layer",
+              "Application Layer",
+            ],
+            correct: 1,
+            difficulty: "medium",
+            topic: "OSI Model",
+          },
+          {
+            question: "What protocol is used for secure web browsing?",
+            options: ["HTTP", "FTP", "HTTPS", "SMTP"],
+            correct: 2,
+            difficulty: "easy",
+            topic: "Web Protocols",
+          },
+          {
+            question: "What is the length of an IPv4 address?",
+            options: ["16 bits", "32 bits", "64 bits", "128 bits"],
+            correct: 1,
+            difficulty: "easy",
+            topic: "IP Addressing",
+          },
+          {
+            question:
+              "Which protocol uses a 3-way handshake to establish a connection?",
+            options: ["UDP", "IP", "ICMP", "TCP"],
+            correct: 3,
+            difficulty: "medium",
+            topic: "Transport Layer",
+          },
+          {
+            question: "What is the primary function of DNS?",
+            options: [
+              "Encrypting traffic",
+              "Assigning IP addresses to devices",
+              "Resolving domain names to IP addresses",
+              "Routing packets",
+            ],
+            correct: 2,
+            difficulty: "hard",
+            topic: "Application Protocols",
+          },
+        ],
+        OS: [
+          {
+            question: "What is the primary function of an Operating System?",
+            options: [
+              "Compile code",
+              "Manage hardware and software resources",
+              "Browse the internet",
+              "Run games",
+            ],
+            correct: 1,
+            difficulty: "easy",
+            topic: "OS Basics",
+          },
+          {
+            question: "What is Virtual Memory?",
+            options: [
+              "Memory inside the CPU",
+              "Cloud storage",
+              "Using disk space as an extension of RAM",
+              "Cache memory",
+            ],
+            correct: 2,
+            difficulty: "medium",
+            topic: "Memory Management",
+          },
+          {
+            question:
+              "Which CPU scheduling algorithm gives each process a fixed time quantum?",
+            options: [
+              "First-Come First-Serve",
+              "Shortest Job Next",
+              "Round Robin",
+              "Priority Scheduling",
+            ],
+            correct: 2,
+            difficulty: "medium",
+            topic: "CPU Scheduling",
+          },
+          {
+            question: "What is a deadlock?",
+            options: [
+              "When the CPU crashes",
+              "When two processes wait on each other indefinitely",
+              "When RAM is full",
+              "When a network drops",
+            ],
+            correct: 1,
+            difficulty: "hard",
+            topic: "Process Synchronization",
+          },
+          {
+            question: "What happens during a Context Switch?",
+            options: [
+              "The computer restarts",
+              "The OS saves the state of a process and loads another",
+              "The user switches tabs",
+              "Data is saved to the hard drive",
+            ],
+            correct: 1,
+            difficulty: "medium",
+            topic: "Process Management",
+          },
+        ],
+        DBMS: [
+          {
+            question: "What does SQL stand for?",
+            options: [
+              "Simple Query Language",
+              "Structured Question Language",
+              "Structured Query Language",
+              "Sequential Query Language",
+            ],
+            correct: 2,
+            difficulty: "easy",
+            topic: "SQL Basics",
+          },
+          {
+            question:
+              "Which constraint ensures that a column cannot have duplicate values?",
+            options: ["NOT NULL", "CHECK", "FOREIGN KEY", "UNIQUE"],
+            correct: 3,
+            difficulty: "easy",
+            topic: "Database Constraints",
+          },
+          {
+            question: "What is a Foreign Key?",
+            options: [
+              "A key used to encrypt the database",
+              "A column that links to the Primary Key of another table",
+              "A key generated automatically",
+              "A key that cannot be null",
+            ],
+            correct: 1,
+            difficulty: "medium",
+            topic: "Relational Models",
+          },
+          {
+            question: "What do the ACID properties stand for in transactions?",
+            options: [
+              "Atomicity, Consistency, Isolation, Durability",
+              "Accuracy, Completeness, Isolation, Data",
+              "Automated, Consistent, Indexed, Dynamic",
+              "Always Consistent In Databases",
+            ],
+            correct: 0,
+            difficulty: "hard",
+            topic: "Transactions",
+          },
+          {
+            question:
+              "Which SQL clause is used to filter the results of a grouped query?",
+            options: ["WHERE", "ORDER BY", "HAVING", "GROUP FILTER"],
+            correct: 2,
+            difficulty: "medium",
+            topic: "Advanced SQL",
+          },
+        ],
+      };
+
+      let QUESTIONS = [];
+
+      // ══════════════════════════════════════════
+      // State
+      // ══════════════════════════════════════════
+      let currentQuestion = 0;
+      let selectedOption = null;
+      let interactions = [];
+      let questionResults = []; // Track which questions were wrong
+      let questionStartTime = null;
+      let timerInterval = null;
+
+      // ══════════════════════════════════════════
+      // Render current question
+      // ══════════════════════════════════════════
+      function renderQuestion() {
+        const q = QUESTIONS[currentQuestion];
+        document.getElementById("question-counter").textContent =
+          `QUESTION ${currentQuestion + 1} OF ${QUESTIONS.length}`;
+        document.getElementById("question-text").textContent = q.question;
+        document.getElementById("progress-fill").style.width =
+          `${(currentQuestion / QUESTIONS.length) * 100}%`;
+
+        const diffTag = document.getElementById("difficulty-tag");
+        diffTag.innerHTML = `<span class="difficulty-tag difficulty-${q.difficulty}">${q.difficulty}</span>`;
+
+        const container = document.getElementById("options-container");
+        container.innerHTML = "";
+        q.options.forEach((opt, i) => {
+          const btn = document.createElement("button");
+          btn.className = "option-btn";
+          btn.textContent = opt;
+          btn.onclick = () => selectOption(i);
+          container.appendChild(btn);
+        });
+
+        selectedOption = null;
+        const submitBtn = document.getElementById("submit-btn");
+        submitBtn.disabled = true;
+        submitBtn.textContent = "Submit Answer";
+        submitBtn.onclick = submitAnswer;
+
+        questionStartTime = Date.now();
+        clearInterval(timerInterval);
+        timerInterval = setInterval(() => {
+          const elapsed = ((Date.now() - questionStartTime) / 1000).toFixed(1);
+          document.getElementById("timer-text").textContent = `${elapsed}s`;
+        }, 100);
+      }
+
+      function selectOption(index) {
+        selectedOption = index;
+        const buttons = document.querySelectorAll(".option-btn");
+        buttons.forEach((btn, i) => {
+          btn.className = i === index ? "option-btn selected" : "option-btn";
+        });
+        document.getElementById("submit-btn").disabled = false;
+      }
+
+      function submitAnswer() {
+        if (selectedOption === null) return;
+
+        clearInterval(timerInterval);
+        const q = QUESTIONS[currentQuestion];
+        const timeTaken = (Date.now() - questionStartTime) / 1000;
+        const isCorrect = selectedOption === q.correct ? 1 : 0;
+
+        const buttons = document.querySelectorAll(".option-btn");
+        buttons.forEach((btn, i) => {
+          btn.disabled = true;
+          if (i === q.correct) btn.classList.add("correct");
+          else if (i === selectedOption && !isCorrect)
+            btn.classList.add("wrong");
+        });
+
+        interactions.push({
+          is_correct: isCorrect,
+          time_taken: Math.round(timeTaken * 10) / 10,
+          attempt_count: 1,
+          hint_count: 0,
+        });
+
+        questionResults.push({
+          question: q.question,
+          topic: q.topic,
+          difficulty: q.difficulty,
+          correct: isCorrect === 1,
+          userAnswer: q.options[selectedOption],
+          correctAnswer: q.options[q.correct],
+          timeTaken: Math.round(timeTaken * 10) / 10,
+        });
+
+        const submitBtn = document.getElementById("submit-btn");
+        if (currentQuestion < QUESTIONS.length - 1) {
+          submitBtn.textContent = "Next Question →";
+          submitBtn.disabled = false;
+          submitBtn.onclick = () => {
+            currentQuestion++;
+            renderQuestion();
+          };
+        } else {
+          submitBtn.textContent = "Get My Learning Path →";
+          submitBtn.disabled = false;
+          submitBtn.onclick = getMLPrediction;
+        }
+      }
+
+      // ══════════════════════════════════════════
+      // Call ML API + Gemini for roadmap
+      // ══════════════════════════════════════════
+      async function getMLPrediction() {
+        document.getElementById("quiz-section").classList.add("hidden");
+        document.getElementById("loading-section").classList.remove("hidden");
+        document.getElementById("loading-section").innerHTML = `
+                <div class="loading">
+                    <div class="spinner"></div>
+                    <p style="color: #94a3b8; font-weight: 500;">Analyzing your performance with LSTM model...</p>
+                </div>
+            `;
+
+        try {
+          // Step 1: Get ML prediction
+          const mlResponse = await fetch("http://127.0.0.1:8000/predict", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ interactions }),
+          });
+          if (!mlResponse.ok) throw new Error("ML API request failed");
+          const mlData = await mlResponse.json();
+
+          // Step 2: Generate personalized roadmap with Gemini
+          document.querySelector("#loading-section .loading p").textContent =
+            "Generating personalized learning roadmap with AI...";
+
+          const wrongOnes = questionResults.filter((r) => !r.correct);
+          const rightOnes = questionResults.filter((r) => r.correct);
+
+          const geminiPrompt = `You are an expert AI tutor. A student just took a quiz and here are their results:
+
+SCORE: ${rightOnes.length}/${QUESTIONS.length}
+ML MASTERY LEVEL: ${Math.round(mlData.mastery_probability * 100)}%
+ML RECOMMENDATION: ${mlData.recommendation}
+
+QUESTIONS THEY GOT WRONG:
+${wrongOnes.map((q) => `- Topic: ${q.topic} | Question: "${q.question}" | They answered: "${q.userAnswer}" | Correct answer: "${q.correctAnswer}" | Time: ${q.timeTaken}s`).join("\n")}
+
+QUESTIONS THEY GOT RIGHT:
+${rightOnes.map((q) => `- Topic: ${q.topic} | Question: "${q.question}" | Time: ${q.timeTaken}s`).join("\n")}
+
+Based on this analysis, generate a personalized learning roadmap. Return ONLY a valid JSON array with 3-5 steps. Each step must have:
+- "action": A short title (include an emoji at the start)
+- "description": A specific, actionable 1-2 sentence description mentioning the EXACT topics and concepts they need to work on. Reference their actual wrong answers.
+
+Example format:
+[{"action":"📚 Review Data Structures Basics","description":"You confused Stack with Queue. Review FIFO vs LIFO ordering — Queue uses FIFO while Stack uses LIFO. Practice identifying which structure fits each scenario."}]
+
+Return ONLY the JSON array, no markdown, no backticks.`;
+
+          let geminiResponse = await fetch(GEMINI_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: geminiPrompt }] }],
+              generationConfig: {
+                temperature: 0.7,
+                maxOutputTokens: 2048,
+                responseMimeType: "application/json",
+              },
+            }),
+          });
+
+          if (!geminiResponse.ok) {
+            console.warn(
+              `Primary Gemini model failed (${geminiResponse.status}). Trying fallback model...`,
+            );
+            const FALLBACK_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
+            geminiResponse = await fetch(FALLBACK_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: geminiPrompt }] }],
+                generationConfig: {
+                  temperature: 0.7,
+                  maxOutputTokens: 2048,
+                  responseMimeType: "application/json",
+                },
+              }),
+            });
+          }
+
+          let aiPath = mlData.learning_path; // Fallback to ML API's generic path
+
+          if (geminiResponse.ok) {
+            const geminiData = await geminiResponse.json();
+            const rawText =
+              geminiData.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            try {
+              // Extract the JSON array more robustly
+              const start = rawText.indexOf("[");
+              const end = rawText.lastIndexOf("]");
+              if (start === -1 || end === -1)
+                throw new Error("No JSON array found in AI response");
+              const cleaned = rawText.substring(start, end + 1);
+
+              const parsed = JSON.parse(cleaned);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                aiPath = parsed.map((step, i) => ({
+                  step: i + 1,
+                  action: step.action,
+                  description: step.description,
+                  icon: "ai",
+                }));
+              }
+            } catch (e) {
+              console.warn("Gemini parse error, using ML fallback:", e);
+            }
+          }
+
+          // Merge ML data with AI-generated path
+          mlData.learning_path = aiPath;
+          setTimeout(() => showResults(mlData), 800);
+        } catch (error) {
+          console.error("Error:", error);
+          document.getElementById("loading-section").innerHTML = `
+                    <div class="results-card" style="text-align:center;">
+                        <p style="font-size:1.2rem; color:#ef4444; margin-bottom:16px; font-weight:700;">⚠️ Connection Error</p>
+                        <p style="color:#a1a1aa;">The ML Engine is currently offline. Please ensure the backend server is running on port 8000.</p>
+                        <div style="text-align:center; margin-top:24px;">
+                            <button class="retry-btn" onclick="location.reload()">🔄 Restart Demo</button>
+                        </div>
+                    </div>
+                `;
+        }
+      }
+
+      // ══════════════════════════════════════════
+      // Display Results + Learning Path
+      // ══════════════════════════════════════════
+      function showResults(data) {
+        document.getElementById("loading-section").classList.add("hidden");
+        const resultsSection = document.getElementById("results-section");
+        resultsSection.classList.remove("hidden");
+
+        const totalCorrect = interactions.filter(
+          (i) => i.is_correct === 1,
+        ).length;
+        const avgTime = (
+          interactions.reduce((sum, i) => sum + i.time_taken, 0) /
+          interactions.length
+        ).toFixed(1);
+        const masteryPct = Math.round(data.mastery_probability * 100);
+
+        let recClass = "rec-review";
+        let recLabel = "Review Fundamentals";
+        let masteryClass = "mastery-low";
+        if (data.recommendation === "advance") {
+          recClass = "rec-advance";
+          recLabel = "Ready to Advance";
+          masteryClass = "mastery-high";
+        } else if (data.recommendation === "practice_more") {
+          recClass = "rec-practice";
+          recLabel = "Practice More";
+          masteryClass = "mastery-mid";
+        }
+
+        let pathHTML = "";
+        data.learning_path.forEach((step, i) => {
+          pathHTML += `
+                    <div class="path-step" style="animation-delay: ${i * 0.15}s">
+                        <div class="step-action">${step.action}</div>
+                        <div class="step-desc">${step.description}</div>
+                    </div>
+                `;
+        });
+
+        resultsSection.innerHTML = `
+                <div class="results-card">
+                    <div class="score-display">${totalCorrect}/${QUESTIONS.length}</div>
+                    <div class="score-label">Questions Answered Correctly</div>
+                    
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="value">${avgTime}s</div>
+                            <div class="label">Avg. Time</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value">${masteryPct}%</div>
+                            <div class="label">ML Mastery</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="value" style="text-transform:capitalize;">${data.suggested_difficulty}</div>
+                            <div class="label">Next Difficulty</div>
+                        </div>
+                    </div>
+
+                    <span class="recommendation-badge ${recClass}">${recLabel}</span>
+                </div>
+
+                <div class="path-section">
+                    <div class="path-title">🎯 Your Personalized Learning Path</div>
+                    <div class="path-subtitle">ML Model (LSTM) + Gemini AI — Personalized for your weak areas</div>
+
+                    <div class="mastery-bar-container">
+                        <div class="mastery-label">
+                            <span>Mastery Level</span>
+                            <span>${masteryPct}%</span>
+                        </div>
+                        <div class="mastery-bar-bg">
+                            <div class="mastery-bar-fill ${masteryClass}" style="width: ${masteryPct}%"></div>
+                        </div>
+                    </div>
+
+                    <p class="detail-text">${data.detail}</p>
+
+                    <div class="path-timeline">
+                        ${pathHTML}
+                    </div>
+
+                    <div style="text-align:center;">
+                        <button class="retry-btn" onclick="resetQuiz()">🔄 Retake Quiz</button>
+                    </div>
+                </div>
+            `;
+
+        setTimeout(() => {
+          document.querySelectorAll(".path-step").forEach((el) => {
+            el.style.opacity = "1";
+          });
+        }, 100);
+      }
+
+      // ══════════════════════════════════════════
+      // Reset
+      // ══════════════════════════════════════════
+      function resetQuiz() {
+        currentQuestion = 0;
+        selectedOption = null;
+        interactions = [];
+        questionResults = [];
+        clearInterval(timerInterval);
+        document.getElementById("results-section").innerHTML = "";
+        document.getElementById("loading-section").classList.add("hidden");
+        document.getElementById("quiz-section").classList.add("hidden");
+        document.getElementById("subject-section").classList.remove("hidden");
+      }
+
+      function startQuiz(subjectCode) {
+        QUESTIONS = QUESTION_BANKS[subjectCode];
+        document.getElementById("subject-section").classList.add("hidden");
+        document.getElementById("quiz-section").classList.remove("hidden");
+        renderQuestion();
+      }
+    </script>
+  </body>
+</html>
