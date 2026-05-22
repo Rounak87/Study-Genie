@@ -32,7 +32,14 @@ timeout /t 3 /nobreak > nul
 echo [^√] Server should be ready.
 echo [^>] Opening Demo Frontend...
 echo.
-start demo\index.html
+:: Create an env-injected copy of the demo HTML so the browser can read the API key from window.__GEMINI_API_KEY
+powershell -NoProfile -Command "
+    $envKey = $env:GEMINI_API_KEY; if (-not $envKey) { $envKey = $env:VITE_GEMINI_API_KEY }; 
+    $root = Split-Path -Parent '%~dp0'; 
+    $src = Join-Path $root 'demo\index.html'; 
+    $dst = Join-Path $root 'demo\index_env.html'; 
+    try { $content = Get-Content $src -Raw; $prefix = '<script>window.__GEMINI_API_KEY = ' + (if ($envKey) { '"' + $envKey + '"' } else { 'null' }) + ';</script>`n'; Set-Content -Path $dst -Value ($prefix + $content); Start-Process $dst } catch { Start-Process $src }
+"
 
 echo Happy Learning!
 pause
