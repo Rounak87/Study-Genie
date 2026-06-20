@@ -4,7 +4,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 class RagTutorService {
   constructor() {
-    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
     if (geminiKey) {
       this.genAI = new GoogleGenerativeAI(geminiKey);
       

@@ -13,6 +13,7 @@ import {
   UserIcon,
   ArrowRightOnRectangleIcon,
   BeakerIcon,
+  Cog6ToothIcon,
 } from "@heroicons/react/24/outline";
 
 const Navbar = () => {
@@ -23,6 +24,8 @@ const Navbar = () => {
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [modalType, setModalType] = useState("login"); // 'login' or 'signup'
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [customApiKey, setCustomApiKey] = useState(localStorage.getItem("VITE_GEMINI_API_KEY") || "");
 
   const navigation = [
     { name: "Home", href: "/", icon: HomeIcon },
@@ -83,6 +86,18 @@ const Navbar = () => {
           </div>
 
           <div className="hidden sm:ml-6 sm:flex sm:items-center">
+            {/* API Settings Button */}
+            <button
+              onClick={() => {
+                setCustomApiKey(localStorage.getItem("VITE_GEMINI_API_KEY") || "");
+                setShowSettingsModal(true);
+              }}
+              className="text-gray-300 hover:text-white p-2 rounded-xl transition-all duration-300 hover:bg-white/10 mr-3 border border-white/10"
+              title="AI Settings"
+            >
+              <Cog6ToothIcon className="w-5 h-5" />
+            </button>
+
             {isAuthenticated ? (
               <div className="relative">
                 <button
@@ -168,6 +183,19 @@ const Navbar = () => {
               );
             })}
 
+            {/* Mobile AI Settings Button */}
+            <button
+              onClick={() => {
+                setCustomApiKey(localStorage.getItem("VITE_GEMINI_API_KEY") || "");
+                setIsOpen(false);
+                setShowSettingsModal(true);
+              }}
+              className="flex items-center w-full px-3 py-3 text-gray-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors text-left"
+            >
+              <Cog6ToothIcon className="w-5 h-5 mr-3" />
+              AI Settings
+            </button>
+
             {/* Mobile auth buttons */}
             <div className="pt-4 space-y-2">
               {isAuthenticated ? (
@@ -216,6 +244,58 @@ const Navbar = () => {
             onSwitchToLogin={() => setModalType("login")}
           />
         )}
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal
+        isOpen={showSettingsModal}
+        onClose={() => setShowSettingsModal(false)}
+        title="AI Settings"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-300 leading-relaxed">
+            Configure your custom Gemini API key. If provided, this key will be used instead of the default key. It is saved securely in your browser's local storage and is never sent to any third-party servers.
+          </p>
+          <div>
+            <label className="block text-sm font-medium text-white mb-2">
+              Gemini API Key
+            </label>
+            <input
+              type="password"
+              placeholder="AIzaSy..."
+              value={customApiKey}
+              onChange={(e) => setCustomApiKey(e.target.value)}
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-4 border-t border-white/10">
+            <button
+              onClick={() => {
+                localStorage.removeItem("VITE_GEMINI_API_KEY");
+                setCustomApiKey("");
+                setShowSettingsModal(false);
+                window.location.reload();
+              }}
+              className="text-gray-300 hover:text-white px-4 py-2 rounded-xl text-sm font-medium transition-colors border border-white/20 hover:bg-white/10"
+            >
+              Clear Key
+            </button>
+            <button
+              onClick={() => {
+                if (customApiKey.trim()) {
+                  localStorage.setItem("VITE_GEMINI_API_KEY", customApiKey.trim());
+                } else {
+                  localStorage.removeItem("VITE_GEMINI_API_KEY");
+                }
+                setShowSettingsModal(false);
+                window.location.reload();
+              }}
+              className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white px-4 py-2 rounded-xl text-sm font-medium shadow-lg transition-all"
+            >
+              Save & Reload
+            </button>
+          </div>
+        </div>
       </Modal>
     </nav>
   );

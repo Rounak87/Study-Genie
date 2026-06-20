@@ -263,7 +263,7 @@ class DocumentStorageService {
   async generateAndStoreEmbeddings(documentId, text) {
     if (!text || text.trim().length === 0) return;
 
-    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
     if (!geminiKey) {
       console.warn("No Gemini API key found, skipping embeddings generation.");
       return;
@@ -321,7 +321,7 @@ class DocumentStorageService {
 
   // Search for relevant chunks given a question
   async searchSimilarChunks(question, documentId, topK = 4) {
-    const geminiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
     if (!geminiKey) return [];
 
     await this.initDB();
