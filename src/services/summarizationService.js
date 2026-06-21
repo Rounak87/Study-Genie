@@ -153,11 +153,13 @@ Be concise but thorough.`;
       const response = await aiService.generateResponse(prompt);
       chunkSummaries.push(response.answer);
 
-      // Rate limiting: wait between chunks (15 req/min = 4 seconds apart)
+      // Rate limiting: wait between chunks (Disabled by request)
+      /*
       if (i < chunks.length - 1) {
         console.log("⏳ Waiting 4 seconds (rate limiting)...");
         await this.delay(4000);
       }
+      */
     }
 
     console.log("🔗 Combining chunk summaries...");
@@ -298,7 +300,7 @@ Make these notes incredibly valuable for a university student. Do not miss cruci
       requiresChunking: tokenEstimate > 30000,
       estimatedChunks: Math.ceil(tokenEstimate / 6250),
       estimatedTime:
-        tokenEstimate > 30000 ? Math.ceil(tokenEstimate / 6250) * 4 : 5,
+        tokenEstimate > 30000 ? Math.ceil(tokenEstimate / 6250) * 1.5 : 5,
     };
   }
 }

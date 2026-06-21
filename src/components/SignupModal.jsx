@@ -23,7 +23,7 @@ const SignupModal = ({ onClose, onSwitchToLogin }) => {
     })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
@@ -47,7 +47,7 @@ const SignupModal = ({ onClose, onSwitchToLogin }) => {
       return
     }
 
-    const result = signup(formData.name, formData.email, formData.password)
+    const result = await signup(formData.name, formData.email, formData.password)
     
     if (result.success) {
       onClose()

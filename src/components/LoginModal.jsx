@@ -11,7 +11,7 @@ const LoginModal = ({ onClose, onSwitchToSignup }) => {
   
   const { login } = useAuth()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
@@ -22,7 +22,7 @@ const LoginModal = ({ onClose, onSwitchToSignup }) => {
       return
     }
 
-    const result = login(email, password)
+    const result = await login(email, password)
     
     if (result.success) {
       onClose()
