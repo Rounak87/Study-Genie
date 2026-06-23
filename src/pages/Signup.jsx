@@ -25,7 +25,7 @@ const Signup = () => {
     })
   }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
     setIsLoading(true)
@@ -49,7 +49,7 @@ const Signup = () => {
       return
     }
 
-    const result = signup(formData.name, formData.email, formData.password)
+    const result = await signup(formData.name, formData.email, formData.password)
     
     if (result.success) {
       navigate('/study-guide')

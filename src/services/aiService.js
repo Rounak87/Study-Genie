@@ -1,177 +1,52 @@
 // AI Service using Google Gemini for educational assistance
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import axios from "axios";
 import { documentStorage } from "./documentStorage";
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class AIService {
   constructor() {
-    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
-
-    if (geminiKey) {
-      this.genAI = new GoogleGenerativeAI(geminiKey);
-      
-      const config = {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 8192,
-      };
-
-      this.model = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: config,
-      });
-
-      this.fallbackModel = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: config,
-      });
-
-      this.workingModelName = "gemini-2.5-flash";
-      console.log("✅ Gemini 2.5 Flash initialized successfully (with Flash-Lite fallback)");
-    } else {
-      this.model = null;
-      this.fallbackModel = null;
-      console.log("⚠️ No Gemini API key found");
-    }
+    console.log("✅ Client AIService initialized (routing queries securely to backend)");
   }
 
   async generateResponse(question, context = {}) {
     const analysis = this.analyzeQuestion(question);
 
-    if (!this.model) {
-      throw new Error(
-        "Gemini AI model not available. No API key or model initialization failed.",
-      );
-    }
-
     try {
-      return await this.generateGeminiResponse(question, analysis, context);
+      const token = localStorage.getItem("studygenie_token");
+      console.log("🚀 Proxying AI request to server...");
+      const response = await axios.post(`${API_URL}/ai/ask`, {
+        question,
+        subject: analysis.subject,
+        complexity: analysis.complexity,
+        conversationHistory: context.conversationHistory
+      }, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : ""
+        }
+      });
+
+      if (response.data && response.data.success) {
+        return {
+          answer: response.data.answer,
+          subject: analysis.subject,
+          complexity: analysis.complexity,
+          confidence: 0.95,
+          source: response.data.source || "server",
+          timestamp: new Date().toISOString(),
+        };
+      } else {
+        throw new Error(response.data.error || "Failed to generate response from server");
+      }
     } catch (error) {
       console.error("AI Service Error:", error);
-      throw error; // Don't fallback, throw the error
-    }
-  }
-
-  async generateGeminiResponse(question, analysis, context = {}) {
-    const { subject, complexity } = analysis;
-
-    // Build educational prompt
-    let prompt = `You are an expert educational AI tutor specialized in ${subject}.
-Student's question: "${question}"
-Complexity level: ${complexity}
-
-`;
-
-    // ADD RAG CONTEXT IF AVAILABLE
-    if (context.documentContext && context.activeDocumentId) {
+      // Fallback to local offline pattern matching if the server is offline or fails
       try {
-        console.log(
-          `🔍 RAG: Searching for chunks related to: "${question}" in document ${context.activeDocumentId}`,
-        );
-        const relevantChunks = await documentStorage.searchSimilarChunks(
-          question,
-          context.activeDocumentId,
-          4,
-        );
-
-        if (relevantChunks && relevantChunks.length > 0) {
-          console.log(`✅ RAG: Found ${relevantChunks.length} relevant chunks`);
-
-          let combinedContext = relevantChunks
-            .map((chunk, i) => `[Excerpt ${i + 1}]:\n${chunk.text}`)
-            .join("\n\n");
-
-          prompt += `\nRelevant document excerpts from the user's uploaded text:\n${combinedContext}\n`;
-          prompt += `\nINSTRUCTIONS FOR USING EXCERPTS: Use the excerpts above to answer the student's question accurately. If the excerpts do not contain the answer, politely let the student know you cannot find the exact answer in the provided document.\n`;
-        } else {
-          console.log(
-            `⚠️ RAG: No highly relevant chunks found, falling back to summary`,
-          );
-          const summaryPreview =
-            typeof context.documentSummary === "string"
-              ? context.documentSummary.substring(0, 1000)
-              : JSON.stringify(context.documentSummary).substring(0, 1000);
-          prompt += `\nRelevant overall document summary:\n${summaryPreview}\n`;
-        }
-      } catch (ragError) {
-        console.error("❌ RAG Error during retrieval:", ragError);
-        // Fallback to basic summary if RAG fails
-        if (context.documentSummary) {
-          const summaryPreview =
-            typeof context.documentSummary === "string"
-              ? context.documentSummary.substring(0, 1000)
-              : JSON.stringify(context.documentSummary).substring(0, 1000);
-          prompt += `\nRelevant document content:\n${summaryPreview}\n`;
-        }
+        console.log("🔄 Backend AI failed/offline. Falling back to local offline responses...");
+        return await this.generateEducationalResponse(question, analysis, context);
+      } catch (fallbackError) {
+        throw new Error(error.response?.data?.error || error.message || "AI request failed");
       }
-    } else if (context.documentSummary) {
-      // Legacy basic context injection
-      const summaryPreview =
-        typeof context.documentSummary === "string"
-          ? context.documentSummary.substring(0, 1000)
-          : JSON.stringify(context.documentSummary).substring(0, 1000);
-      prompt += `\nRelevant document content:\n${summaryPreview}\n`;
-    }
-
-    // Add conversation history for context
-    if (context.conversationHistory && context.conversationHistory.length > 0) {
-      const recentHistory = context.conversationHistory
-        .slice(-3)
-        .map((msg) => `${msg.sender}: ${msg.text}`)
-        .join("\n");
-      prompt += `\nRecent conversation:\n${recentHistory}\n`;
-    }
-
-    prompt += `\nProvide a clear, educational response suitable for a student. Use examples and step-by-step explanations when helpful. Keep the response concise (under 200 words).`;
-
-    try {
-      console.log("🚀 Calling Gemini API [Primary: Flash]...");
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const answer = response.text();
-
-      console.log("✅ Gemini API response received");
-
-      return {
-        answer: answer.trim(),
-        subject: subject,
-        complexity: complexity,
-        confidence: 0.95,
-        source: "gemini-flash",
-        timestamp: new Date().toISOString(),
-      };
-    } catch (error) {
-      const isQuotaError = 
-        error?.status === 429 || 
-        error?.message?.toLowerCase().includes("quota") || 
-        error?.message?.toLowerCase().includes("rate limit") ||
-        error?.message?.toLowerCase().includes("exhausted");
-
-      if (isQuotaError && this.fallbackModel) {
-        console.warn("⚠️ Primary Gemini model quota exceeded! Switching to Flash-Lite backup...");
-        try {
-          const fallbackResult = await this.fallbackModel.generateContent(prompt);
-          const fallbackResponse = await fallbackResult.response;
-          const fallbackAnswer = fallbackResponse.text();
-
-          console.log("✅ Gemini API fallback response received");
-
-          return {
-            answer: fallbackAnswer.trim(),
-            subject: subject,
-            complexity: complexity,
-            confidence: 0.90, // Slightly lower confidence for lite model
-            source: "gemini-flash-lite",
-            timestamp: new Date().toISOString(),
-          };
-        } catch (fallbackError) {
-          console.error("❌ Gemini API Fallback Error:", fallbackError.message);
-          throw new Error(`Gemini API failed entirely (even fallback): ${fallbackError.message}`);
-        }
-      }
-
-      console.error("❌ Gemini API Error:", error.message);
-      throw new Error(`Gemini API failed: ${error.message}`);
     }
   }
 
@@ -389,8 +264,8 @@ Complexity level: ${complexity}
 
   getStatus() {
     return {
-      hasApiKey: !!this.model,
-      mode: this.model ? "Gemini AI" : "Fallback",
+      hasApiKey: true,
+      mode: "Server AI Router",
       ready: true,
     };
   }

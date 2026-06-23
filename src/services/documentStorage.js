@@ -1,8 +1,7 @@
-import { openDB } from "idb";
-import * as pdfjsLib from "pdfjs-dist";
-import Tesseract from "tesseract.js";
+import axios from "axios";
 import { RecursiveCharacterTextSplitter } from "langchain/text_splitter";
-import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Initialize PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js`;
@@ -263,12 +262,6 @@ class DocumentStorageService {
   async generateAndStoreEmbeddings(documentId, text) {
     if (!text || text.trim().length === 0) return;
 
-    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
-    if (!geminiKey) {
-      console.warn("No Gemini API key found, skipping embeddings generation.");
-      return;
-    }
-
     await this.initDB();
 
     // 1. Chunk the text
@@ -282,17 +275,26 @@ class DocumentStorageService {
 
     if (docs.length === 0) return;
 
-    // 2. Initialize Embedder
-    const embedder = new GoogleGenerativeAIEmbeddings({
-      apiKey: geminiKey,
-      modelName: "text-embedding-004", // Latest Google embedding model
+    // 2. Generate Vectors via backend proxy
+    const token = localStorage.getItem("studygenie_token");
+    const textsToEmbed = docs.map((doc) => doc.pageContent);
+
+    console.log(`🚀 Requesting backend to embed ${textsToEmbed.length} chunks...`);
+    const response = await axios.post(`${API_URL}/ai/embed`, {
+      texts: textsToEmbed
+    }, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : ""
+      }
     });
 
-    // 3. Generate Vectors
-    const textsToEmbed = docs.map((doc) => doc.pageContent);
-    const vectors = await embedder.embedDocuments(textsToEmbed);
+    if (!response.data || !response.data.success) {
+      throw new Error(response.data?.error || "Failed to generate embeddings from server");
+    }
 
-    // 4. Store in IndexedDB
+    const vectors = response.data.embeddings;
+
+    // 3. Store in IndexedDB
     const tx = this.db.transaction("embeddings", "readwrite");
     for (let i = 0; i < docs.length; i++) {
       await tx.store.add({
@@ -321,17 +323,24 @@ class DocumentStorageService {
 
   // Search for relevant chunks given a question
   async searchSimilarChunks(question, documentId, topK = 4) {
-    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
-    if (!geminiKey) return [];
-
     await this.initDB();
 
-    // 1. Embed the question
-    const embedder = new GoogleGenerativeAIEmbeddings({
-      apiKey: geminiKey,
-      modelName: "text-embedding-004",
+    // 1. Embed the question via backend proxy
+    const token = localStorage.getItem("studygenie_token");
+    console.log("🚀 Requesting backend to embed search query...");
+    const response = await axios.post(`${API_URL}/ai/embed`, {
+      text: question
+    }, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : ""
+      }
     });
-    const questionVector = await embedder.embedQuery(question);
+
+    if (!response.data || !response.data.success) {
+      throw new Error(response.data?.error || "Failed to generate search embedding from server");
+    }
+
+    const questionVector = response.data.embedding;
 
     // 2. Retrieve all chunks for this document
     const tx = this.db.transaction("embeddings", "readonly");

@@ -1,39 +1,10 @@
+import axios from "axios";
 
-
-import { GoogleGenerativeAI } from "@google/generative-ai";
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 class RagTutorService {
   constructor() {
-    const geminiKey = localStorage.getItem("VITE_GEMINI_API_KEY") || import.meta.env.VITE_GEMINI_API_KEY;
-    if (geminiKey) {
-      this.genAI = new GoogleGenerativeAI(geminiKey);
-      
-      const config = {
-        temperature: 0.7,
-        topP: 0.95,
-        topK: 40,
-        maxOutputTokens: 4096,
-      };
-
-      // Primary Model
-      this.model = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: config,
-      });
-
-      // Fallback Model (used when quota is exceeded)
-      this.fallbackModel = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: config,
-      });
-
-      console.log("✅ RAG Tutor Service initialized (Primary: 2.5 Flash, Fallback: 2.5 Flash-Lite)");
-    } else {
-      this.model = null;
-      this.fallbackModel = null;
-      console.warn("⚠️ No Gemini API key found for RAG Tutor");
-    }
-
+    console.log("✅ Client RAG Tutor Service initialized (routing queries securely to backend)");
     this.conversationHistory = [];
   }
 
@@ -189,87 +160,36 @@ class RagTutorService {
       throw new Error("Question is required.");
     }
 
-    if (!this.model) {
-      throw new Error("Gemini AI is not available. Please check your API key.");
-    }
-
-    // Step 1: Local chunk retrieval (zero API calls)
+    // Step 1: Local chunk retrieval (zero API calls in the browser)
     const relevantChunks = this.findRelevantChunks(question, documentText, 4);
 
-    // Step 2: Build the prompt
-    let prompt = `You are a friendly, expert AI Study Tutor. A student has uploaded a document and is asking you questions about it. Your job is to provide **clear, detailed, and educational** answers based on the document content.
-
-## Your Guidelines
-- Answer using information from the document excerpts provided below
-- Give thorough explanations with examples where helpful
-- Use **markdown formatting**: headings, bold, bullet points, numbered lists
-- If the excerpts don't contain the answer, say so honestly and share what you do know from the provided context
-- Keep a warm, encouraging tone — you're a tutor, not a textbook
-- For complex topics, break them down step-by-step
-
-`;
-
-    // Add document context
-    if (relevantChunks.length > 0) {
-      prompt += `## Relevant Document Excerpts\n\n`;
-      relevantChunks.forEach((chunk, i) => {
-        prompt += `### Excerpt ${i + 1}\n${chunk.text}\n\n`;
-      });
-    } else if (documentText && documentText.length > 0) {
-      // Fallback: use first portion of document as context
-      const preview = documentText.substring(0, 3000);
-      prompt += `## Document Overview\n${preview}\n\n`;
-    }
-
-    // Add conversation history (last 4 exchanges for follow-ups)
-    if (conversationHistory.length > 0) {
-      const recent = conversationHistory.slice(-4);
-      prompt += `## Recent Conversation\n`;
-      recent.forEach((msg) => {
-        prompt += `**Student:** ${msg.question}\n**Tutor:** ${msg.answer}\n\n`;
-      });
-    }
-
-    // Add the question
-    prompt += `## Student's Question\n${question}\n\n`;
-    prompt += `## Your Answer (use markdown formatting)\n`;
-
-    // Step 3: Single Gemini API call with Fallback logic
+    // Step 2: Send payloads securely to the server
     try {
-      console.log(`🎓 RAG Tutor [Primary]: Answering query with ${relevantChunks.length} chunks...`);
-      const result = await this.model.generateContent(prompt);
-      const response = await result.response;
-      const answer = response.text().trim();
-
-      // Store in conversation history
-      this.conversationHistory.push({ question, answer });
-      return answer;
-
-    } catch (error) {
-      // Check if it's a quota / rate limit error (usually 429 Too Many Requests)
-      const isQuotaError = 
-        error?.status === 429 || 
-        error?.message?.toLowerCase().includes("quota") || 
-        error?.message?.toLowerCase().includes("rate limit") ||
-        error?.message?.toLowerCase().includes("exhausted");
-
-      if (isQuotaError && this.fallbackModel) {
-        console.warn("⚠️ Primary model quota exceeded! Switching to backup model (Gemini 2.5 Flash-Lite)...");
-        try {
-          const fallbackResult = await this.fallbackModel.generateContent(prompt);
-          const fallbackResponse = await fallbackResult.response;
-          const fallbackAnswer = fallbackResponse.text().trim();
-          
-          this.conversationHistory.push({ question, answer: fallbackAnswer });
-          return fallbackAnswer;
-        } catch (fallbackError) {
-          console.error("❌ RAG Tutor Fallback Error:", fallbackError);
-          throw new Error(`Failed to generate answer even with backup model: ${fallbackError.message}`);
+      const token = localStorage.getItem("studygenie_token");
+      console.log(`🎓 RAG Tutor: Proxying query with ${relevantChunks.length} chunks to server...`);
+      
+      const response = await axios.post(`${API_URL}/ai/rag-ask`, {
+        question,
+        excerpts: relevantChunks,
+        documentText: documentText ? documentText.substring(0, 3000) : '',
+        conversationHistory
+      }, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : ""
         }
-      }
+      });
 
-      console.error("❌ RAG Tutor Primary Error:", error);
-      throw new Error(`Failed to generate answer: ${error.message}`);
+      if (response.data && response.data.success) {
+        const answer = response.data.answer.trim();
+        // Store in local conversation history for follow-ups
+        this.conversationHistory.push({ question, answer });
+        return answer;
+      } else {
+        throw new Error(response.data.error || "Failed to generate answer from server");
+      }
+    } catch (error) {
+      console.error("RAG Tutor Server Error:", error);
+      throw new Error(error.response?.data?.error || error.message || "Failed to generate answer");
     }
   }
 
