@@ -1,128 +1,87 @@
-# Study Genie
+# StudyGenie: AI-Powered Adaptive Learning Ecosystem
 
-Study Genie is an AI-powered learning platform built to help students study smarter and stay organized. The platform combines modern web technologies with intelligent features to provide a better learning experience through personalized study assistance, organized resources, and productivity-focused tools.
+StudyGenie is an advanced, high-performance learning platform that combines modern backend design, local document intelligence (RAG & OCR), and deep learning sequence models to provide students with personalized, adaptive study paths. 
 
-The goal of the project is to create a simple, scalable, and user-friendly system that supports students in managing their academic workflow more efficiently.
+Rather than a simple static frontend assistant, StudyGenie is engineered around a secure Node.js/Express API, cloud object storage, and a Python-based PyTorch Deep Knowledge Tracing (DKT) engine.
 
 ---
 
-## Features
+## Technical Architecture Blueprint
 
-- AI-assisted learning support
-- Smart study material organization
-- Clean and responsive user interface
-- Secure authentication system
-- Real-time data management
-- Personalized study experience
-- Modern dashboard and navigation
-- Scalable backend architecture
+```mermaid
+graph TD
+    %% Client & Gateway
+    Client[React Frontend <br> Vite + Tailwind] <-->|HTTPS / JWT| Gateway[Express API Gateway <br> Node.js]
+    
+    %% Storage & Caching
+    Gateway <-->|Pre-signed PUT URLs| S3[Cloudflare R2 Bucket <br> Document Storage]
+    Gateway <-->|Read / Write| MongoDB[(MongoDB Atlas <br> User & Document Metadata)]
+    Gateway <-->|Job Queue / Cache| Redis[(Upstash Redis <br> BullMQ Queue)]
+    
+    %% Async Processing
+    Redis <--> Worker[Background Worker <br> pdf-parse + OCR]
+    Worker -->|Vector Embeddings| MongoDB
+    Gateway <-->|Vector Semantic Search| MongoDB
+    
+    %% AI & ML Engines
+    Gateway <-->|API Calls| LLM[Google Gemini API <br> Flash / Flash-Lite Fallback]
+    Gateway <-->|JSON Performance Logs| MLEngine[FastAPI ML Engine <br> PyTorch LSTM DKT Model]
+```
+
+---
+
+## Core Capabilities
+
+### 1. Document Intelligence & Local Vector Search (RAG)
+*   **Vector Search RAG**: Documents are parsed, split into semantic chunks, and embedded using Google's `text-embedding-004` model. Vector similarity lookups are performed natively in MongoDB Atlas using cosine similarity indices to feed highly relevant context to the tutor model.
+*   **Server-Side OCR Workers**: Background workers handle PDF text extraction and OCR (Optical Character Recognition) asynchronously, offloading CPU-heavy parsing from the user's browser tab.
+
+### 2. Predictive Mastery Modeling (Deep Knowledge Tracing)
+*   **PyTorch LSTM Engine**: The platform features a Deep Knowledge Tracing (DKT) LSTM model implemented in PyTorch. The model tracks a student's historical sequence of quiz attempts, normalized answer times, attempt counts, and hint usage to forecast their current conceptual mastery.
+*   **Adaptive Roadmaps**: Based on the LSTM's mastery forecast, the platform dynamically generates tailored study roadmaps, offering Easy/Fundamental, Medium/Practice, or Hard/Challenge paths.
+
+### 3. Enterprise-Grade Security & Performance
+*   **Secure API Routing**: All large language model queries are proxied through a secure Express.js backend. This isolates Google Gemini API keys entirely from the browser, protecting developer credentials.
+*   **Presigned Upload Streams**: File uploads are streamed directly from the client to a Cloudflare R2 bucket using temporary pre-signed PUT URLs, keeping file sizes off the application server.
 
 ---
 
 ## Tech Stack
 
-### Frontend
-- React.js
-- Next.js
-- Tailwind CSS
+*   **Frontend**: React 19 (Vite), Tailwind CSS, Framer Motion, Axios, React Router.
+*   **API Gateway**: Node.js, Express, JSON Web Tokens (JWT), Mongoose, `@google/generative-ai`.
+*   **Databases**: MongoDB Atlas (App Data & Vector Store), Upstash Redis (Caching & Task Queue).
+*   **Cloud Hosting**: Cloudflare R2 (S3-Compatible Object Storage).
+*   **ML API Server**: Python, FastAPI, PyTorch (LSTM), NumPy.
 
-### Backend
-- Node.js
-- Express.js
 
-### Database
-- MongoDB
 
-### Additional Tools
-- JavaScript
-- REST APIs
-- Git & GitHub
+## Quickstart
 
----
+### 1. Configure Environment Variables
+Create a `.env` file in the project root folder:
+```env
+# Frontend (Client)
+VITE_FIREBASE_API_KEY=your_firebase_key
+VITE_API_URL=http://localhost:5000/api
 
-## Project Structure
-
-```bash
-Study-Genie/
-│
-├── frontend/        # Frontend application
-├── backend/         # Backend APIs and server logic
-├── components/      # Reusable UI components
-├── public/          # Static assets
-├── database/        # Database configuration
-└── README.md
+# Backend (Server)
+PORT=5000
+MONGODB_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_signing_key
+GEMINI_API_KEY=your_google_gemini_key
 ```
 
----
-
-## Installation
-
-### Clone the repository
-
+### 2. Launch Services
+Start the Node.js Express server:
 ```bash
-git clone https://github.com/Rounak87/Study-Genie.git
-```
-
-### Navigate to the project folder
-
-```bash
-cd Study-Genie
-```
-
-### Install dependencies
-
-```bash
+cd backend
 npm install
-```
-
-### Run the development server
-
-```bash
 npm run dev
 ```
 
-The application will run locally at:
-
+Start the Vite React frontend:
 ```bash
-http://localhost:3000
+npm install
+npm run dev
 ```
-
----
-
-## Environment Variables
-
-Create a `.env` file in the root directory and add the required environment variables.
-
-```env
-MONGODB_URI=your_mongodb_connection_string
-JWT_SECRET=your_secret_key
-OPENAI_API_KEY=your_api_key
-```
-
----
-
-## Objectives
-
-- Improve student productivity using AI tools
-- Provide a centralized study management platform
-- Simplify access to academic resources
-- Reduce manual effort in organizing study materials
-- Build an interactive and scalable educational system
-
----
-
-## Future Improvements
-
-- AI-generated quizzes and assignments
-- Voice-based learning assistance
-- Collaborative study rooms
-- Performance analytics dashboard
-- Mobile application support
-- Advanced recommendation system
-
----
-
-
-## License
-
-This project is created for educational and learning purposes.
