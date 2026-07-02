@@ -7,4 +7,16 @@ export default defineConfig({
   css: {
     postcss: './postcss.config.js',
   },
+  optimizeDeps: {
+    include: [
+      'react',
+      'react-dom',
+      'react-router-dom',
+      '@tanstack/react-query',
+      'axios',
+      'framer-motion',
+      'react-dropzone',
+      'react-markdown'
+    ]
+  }
 })

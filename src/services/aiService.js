@@ -1,6 +1,5 @@
 // AI Service using Google Gemini for educational assistance
 import axios from "axios";
-import { documentStorage } from "./documentStorage";
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -19,7 +18,9 @@ class AIService {
         question,
         subject: analysis.subject,
         complexity: analysis.complexity,
-        conversationHistory: context.conversationHistory
+        conversationHistory: context.conversationHistory,
+        raw: context.raw || false,
+        json: context.json || false
       }, {
         headers: {
           Authorization: token ? `Bearer ${token}` : ""

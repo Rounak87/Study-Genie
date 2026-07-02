@@ -63,12 +63,6 @@ const Home = () => {
       gradient: 'from-teal-500 to-cyan-500'
     },
     {
-      icon: AcademicCapIcon,
-      title: 'Progress Analytics',
-      description: 'Detailed insights into your learning journey with visual dashboards.',
-      gradient: 'from-rose-500 to-pink-500'
-    },
-    {
       icon: UserGroupIcon,
       title: 'Community Learning',
       description: 'Connect with peers, share roadmaps, and collaborate on studies.',

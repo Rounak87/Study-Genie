@@ -57,7 +57,7 @@ const isQuotaExceeded = (error) => {
  * @access  Private
  */
 export const askTutor = async (req, res) => {
-  const { question, subject = 'general', complexity = 'intermediate', conversationHistory = [] } = req.body;
+  const { question, subject = 'general', complexity = 'intermediate', conversationHistory = [], raw = false, json = false } = req.body;
 
   if (!question) {
     return res.status(400).json({ success: false, error: 'Please provide a question' });
@@ -69,49 +69,81 @@ export const askTutor = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Gemini AI service is not initialized on the server.' });
   }
 
-  // Build the tutor-behavior educational prompt
-  let prompt = `You are an expert educational AI tutor specialized in ${subject}.
+  // 1. Prepare Prompt
+  let prompt = '';
+  if (raw) {
+    prompt = question;
+  } else {
+    // Build the tutor-behavior educational prompt
+    prompt = `You are an expert educational AI tutor specialized in ${subject}.
 Student's question: "${question}"
 Complexity level: ${complexity}
 
 `;
 
-  // Add conversation history context
-  if (conversationHistory && conversationHistory.length > 0) {
-    const recentHistory = conversationHistory
-      .slice(-3)
-      .map((msg) => `${msg.sender}: ${msg.text}`)
-      .join('\n');
-    prompt += `\nRecent conversation:\n${recentHistory}\n`;
+    // Add conversation history context
+    if (conversationHistory && conversationHistory.length > 0) {
+      const recentHistory = conversationHistory
+        .slice(-3)
+        .map((msg) => `${msg.sender}: ${msg.text}`)
+        .join('\n');
+      prompt += `\nRecent conversation:\n${recentHistory}\n`;
+    }
+
+    prompt += `\nProvide a clear, educational response suitable for a student. Use examples and step-by-step explanations when helpful. Keep the response concise (under 200 words).`;
   }
 
-  prompt += `\nProvide a clear, educational response suitable for a student. Use examples and step-by-step explanations when helpful. Keep the response concise (under 200 words).`;
+  // 2. Configure Model Settings (JSON format fallback client-side if needed)
+  let activeModel = primaryModel;
+  let activeFallback = fallbackModel;
 
+  if (json) {
+    try {
+      activeModel = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: 'application/json'
+        }
+      });
+      activeFallback = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash-lite',
+        generationConfig: {
+          temperature: 0.7,
+          responseMimeType: 'application/json'
+        }
+      });
+    } catch (e) {
+      console.warn('Failed to configure JSON model, falling back to standard models:', e.message);
+    }
+  }
+
+  // 3. Execute prompt
   try {
-    console.log('🚀 Calling Gemini API (Primary: 2.5-flash) for Tutor Chat...');
-    const result = await primaryModel.generateContent(prompt);
+    console.log(`🚀 Calling Gemini API (json=${json}, raw=${raw}) for Prompt...`);
+    const result = await activeModel.generateContent(prompt);
     const response = await result.response;
     const answer = response.text().trim();
 
     return res.json({
       success: true,
       answer,
-      source: 'gemini-flash',
+      source: json ? 'gemini-flash-json' : 'gemini-flash',
     });
   } catch (error) {
     console.warn('⚠️ Primary Gemini model failed/exhausted:', error.message);
 
-    if (fallbackModel) {
-      console.log('🔄 Switching to backup model (Gemini 2.5 Flash-Lite)...');
+    if (activeFallback) {
+      console.log('🔄 Switching to backup model...');
       try {
-        const result = await fallbackModel.generateContent(prompt);
+        const result = await activeFallback.generateContent(prompt);
         const response = await result.response;
         const answer = response.text().trim();
 
         return res.json({
           success: true,
           answer,
-          source: 'gemini-flash-lite',
+          source: json ? 'gemini-flash-lite-json' : 'gemini-flash-lite',
         });
       } catch (fallbackError) {
         console.error('❌ Gemini fallback model also failed:', fallbackError);
