@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
-import documentStorage from '../services/simpleDocumentStorage';
+
 
 const AuthContext = createContext();
 
@@ -38,9 +38,8 @@ export const AuthProvider = ({ children }) => {
           const fetchedUser = response.data.user;
           setUser(fetchedUser);
           
-          // Bridge user IDs to ensure IndexedDB maps correctly
+          // Bridge user IDs
           localStorage.setItem('studyGenieUserId', fetchedUser.id);
-          documentStorage.userId = fetchedUser.id;
         } else {
           // Token invalid/expired
           localStorage.removeItem('studygenie_token');
@@ -75,9 +74,8 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('studygenie_token', token);
         localStorage.setItem('studygenie_user', JSON.stringify(loggedUser));
         
-        // Sync database user ID with local file storage user ID
+        // Sync database user ID
         localStorage.setItem('studyGenieUserId', loggedUser.id);
-        documentStorage.userId = loggedUser.id;
 
         setUser(loggedUser);
         return { success: true };
@@ -106,9 +104,8 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem('studygenie_token', token);
         localStorage.setItem('studygenie_user', JSON.stringify(registeredUser));
         
-        // Sync database user ID with local file storage user ID
+        // Sync database user ID
         localStorage.setItem('studyGenieUserId', registeredUser.id);
-        documentStorage.userId = registeredUser.id;
 
         setUser(registeredUser);
         return { success: true };
@@ -127,9 +124,8 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('studygenie_token');
     localStorage.removeItem('studygenie_user');
     
-    // Clear the mapped DB user ID and generate a clean anonymous session for simpleDocumentStorage
+    // Clear the mapped DB user ID
     localStorage.removeItem('studyGenieUserId');
-    documentStorage.userId = documentStorage.getUserId();
   };
 
   const value = {

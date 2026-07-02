@@ -1,14 +1,10 @@
-// Text extraction service for various file types
-import * as pdfjsLib from 'pdfjs-dist';
-import { createWorker } from 'tesseract.js';
-
-// Set up PDF.js worker - use a more reliable approach
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Text extraction service for various file types (lazy loaded)
 
 class TextExtractionService {
   constructor() {
     this.ocrWorker = null;
     this.isPDFJSInitialized = false;
+    this.pdfjsLib = null;
   }
 
   // Initialize PDF.js with proper error handling
@@ -16,28 +12,25 @@ class TextExtractionService {
     if (this.isPDFJSInitialized) return;
     
     try {
-      // Try to load from CDN first
-      await pdfjsLib.GlobalWorkerOptions.workerSrc;
+      console.log('📦 Dynamically loading PDF.js...');
+      this.pdfjsLib = await import('pdfjs-dist');
+      // Set up PDF.js worker - use a more reliable approach
+      this.pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${this.pdfjsLib.version}/pdf.worker.min.js`;
       this.isPDFJSInitialized = true;
     } catch (error) {
       console.warn('CDN worker failed, trying alternative approach:', error);
       
       // Fallback: Use a version that definitely exists
-      pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js`;
-      
-      try {
-        await pdfjsLib.GlobalWorkerOptions.workerSrc;
-        this.isPDFJSInitialized = true;
-      } catch (fallbackError) {
-        console.error('Fallback worker also failed:', fallbackError);
-        throw new Error('PDF.js worker initialization failed');
-      }
+      this.pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js`;
+      this.isPDFJSInitialized = true;
     }
   }
 
   // Initialize OCR worker (lazy initialization)
   async initOCRWorker() {
     if (!this.ocrWorker) {
+      console.log('📦 Dynamically loading Tesseract.js...');
+      const { createWorker } = await import('tesseract.js');
       this.ocrWorker = await createWorker('eng');
     }
     return this.ocrWorker;
@@ -55,7 +48,7 @@ class TextExtractionService {
       const arrayBuffer = await file.arrayBuffer();
       console.log('📄 PDF loaded, size:', arrayBuffer.byteLength, 'bytes');
       
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pdf = await this.pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       console.log('📄 PDF parsed, pages:', pdf.numPages);
       
       const totalPages = pdf.numPages;
@@ -246,8 +239,7 @@ class TextExtractionService {
 
   // Test function for debugging
   testExtraction() {
-    console.log('🧪 Text extraction service initialized');
-    console.log('🧪 PDF.js worker source:', pdfjsLib.GlobalWorkerOptions.workerSrc);
+    console.log('🧪 Text extraction service initialized (lazy loading active)');
     return true;
   }
 }

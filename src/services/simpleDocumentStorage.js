@@ -1,208 +1,215 @@
-import { openDB } from 'idb';
+import axios from 'axios';
 import textExtractor from './textExtraction';
+
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+const getHeaders = () => {
+  const token = localStorage.getItem('studygenie_token');
+  return {
+    headers: {
+      Authorization: token ? `Bearer ${token}` : ''
+    }
+  };
+};
 
 class SimpleDocumentStorage {
   constructor() {
-    this.dbName = 'StudyGenieDocuments';
-    this.dbVersion = 1;
-    this.db = null;
-    this.userId = this.getUserId(); // Get or create user ID
+    this.clearOldIndexedDB();
   }
 
-  // Get or generate user ID for personalized storage
-  getUserId() {
+  get userId() {
     let userId = localStorage.getItem('studyGenieUserId');
     if (!userId) {
-      userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      localStorage.setItem('studyGenieUserId', userId);
-      console.log('Created new user ID:', userId);
+      userId = localStorage.getItem('studyGenieUserId_legacy');
+      if (!userId) {
+        userId = 'user_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('studyGenieUserId_legacy', userId);
+      }
     }
     return userId;
   }
 
-  // Initialize IndexedDB
-  async initDB() {
-    if (this.db) return this.db;
-
+  // Clear old browser-based IndexedDB data to save disk space
+  async clearOldIndexedDB() {
     try {
-      console.log('Initializing IndexedDB...');
-      this.db = await openDB(this.dbName, this.dbVersion, {
-        upgrade(db) {
-          console.log('Upgrading IndexedDB schema...');
-          // Create documents store
-          if (!db.objectStoreNames.contains('documents')) {
-            const documentsStore = db.createObjectStore('documents', {
-              keyPath: 'id',
-              autoIncrement: false
-            });
-            documentsStore.createIndex('name', 'name');
-            documentsStore.createIndex('uploadDate', 'uploadDate');
-            console.log('Documents store created');
-          }
+      const dbName = 'StudyGenieDocuments';
+      // Attempt to check database names and delete the legacy IndexedDB
+      if (window.indexedDB && window.indexedDB.databases) {
+        const databases = await window.indexedDB.databases();
+        const exists = databases.some(db => db.name === dbName);
+        if (exists) {
+          console.log('🧹 Legacy IndexedDB detected. Clearing local documents store to free browser space...');
+          window.indexedDB.deleteDatabase(dbName);
+          console.log('✅ Legacy IndexedDB database deleted.');
         }
-      });
-      console.log('IndexedDB initialized successfully');
-      return this.db;
-    } catch (error) {
-      console.error('Error initializing IndexedDB:', error);
-      throw error;
+      }
+    } catch (e) {
+      console.warn('Unable to clear legacy IndexedDB (this is normal on some browsers/settings):', e.message);
     }
   }
 
-  // Generate unique ID for document
-  generateDocumentId() {
-    return Date.now().toString() + '_' + Math.random().toString(36).substr(2, 9);
+  getUserId() {
+    return this.userId;
   }
 
-  // Convert file to base64 for storage
-  async fileToBase64(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = error => reject(error);
-    });
+  // Map MongoDB schema to frontend UI expectations
+  mapMongoDoc(doc) {
+    if (!doc) return null;
+    return {
+      id: doc._id || doc.id,
+      userId: doc.userId,
+      name: doc.name,
+      type: doc.type,
+      size: doc.size,
+      uploadDate: doc.createdAt || doc.uploadDate,
+      textContent: doc.textContent || '',
+      textExtractionMethod: doc.textExtractionMethod || 'none',
+      canExtractText: doc.type === 'application/pdf' || doc.type?.startsWith('text/') || doc.type?.startsWith('image/'),
+      hasText: !!(doc.textContent && doc.textContent.length > 0),
+      summaries: doc.summaries || {},
+      studyMaterials: doc.studyMaterials || {},
+      status: doc.status || 'completed'
+    };
   }
 
-  // Enhanced file storage with text extraction
+  // Upload document directly to Cloudflare R2 via pre-signed PUT URLs
   async storeDocument(file, onProgress = null) {
     try {
-      await this.initDB();
+      if (onProgress) onProgress({ stage: 'Initiating secure connection...', progress: 5 });
+
+      // 1. Get pre-signed PUT URL from the backend
+      const uploadUrlRes = await axios.get(
+        `${API_URL}/documents/upload-url?fileName=${encodeURIComponent(file.name)}&fileType=${encodeURIComponent(file.type)}&fileSize=${file.size}`,
+        getHeaders()
+      );
+
+      const { uploadUrl, r2Key } = uploadUrlRes.data;
+
+      // 2. Upload file binary directly to Cloudflare R2
+      if (onProgress) onProgress({ stage: 'Uploading raw file to Cloudflare R2...', progress: 10 });
       
-      const documentId = this.generateDocumentId();
-      const startTime = Date.now();
+      await axios.put(uploadUrl, file, {
+        headers: {
+          'Content-Type': file.type
+        },
+        onUploadProgress: (progressEvent) => {
+          const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+          // Scale progress bar to map to 10% - 50% for visual feedback
+          const scaledProgress = 10 + (percentCompleted * 0.4);
+          if (onProgress) {
+            onProgress({
+              stage: `Uploading to cloud (${percentCompleted}%)...`,
+              progress: Math.round(scaledProgress)
+            });
+          }
+        }
+      });
+
+      // 3. Extract text content locally so RAG/AI summaries still work on upload
       let extractedText = '';
       let textExtractionMethod = 'none';
+      const canExtract = textExtractor.canExtractText(file);
 
-      if (onProgress) onProgress({ stage: 'Starting upload...', progress: 0 });
-
-      // Convert file to base64
-      if (onProgress) onProgress({ stage: 'Converting file...', progress: 20 });
-      const fileData = await this.fileToBase64(file);
-
-      // Extract text if supported
-      const canExtractText = textExtractor.canExtractText(file);
-      console.log('🔍 Text extraction check:', {
-        fileName: file.name,
-        fileType: file.type,
-        canExtractText: canExtractText
-      });
-      
-      if (canExtractText) {
+      if (canExtract) {
         try {
-          console.log('✨ Starting text extraction for:', file.name);
-          if (onProgress) onProgress({ stage: 'Extracting text...', progress: 40 });
-          
+          if (onProgress) onProgress({ stage: 'Extracting text content...', progress: 60 });
+
           const textResult = await textExtractor.extractText(file, (textProgress) => {
-            // Scale text extraction progress to 40-70% of total progress
-            const scaledProgress = 40 + (textProgress.progress * 0.3);
-            console.log('📊 Text extraction progress:', textProgress.progress + '%', textProgress.stage);
-            if (onProgress) onProgress({ 
-              stage: textProgress.stage || 'Extracting text...', 
-              progress: Math.round(scaledProgress) 
-            });
+            // Scale text extraction progress to 60% - 90%
+            const scaledProgress = 60 + (textProgress.progress * 0.3);
+            if (onProgress) {
+              onProgress({
+                stage: textProgress.stage || 'Extracting text...',
+                progress: Math.round(scaledProgress)
+              });
+            }
           });
 
           if (textResult.success && textResult.text) {
             extractedText = textResult.text;
             textExtractionMethod = textResult.method;
-            console.log(`✅ Text extracted using ${textResult.method}, length: ${textResult.text.length}`);
-          } else {
-            console.log('⚠️ Text extraction returned no text');
           }
-        } catch (textError) {
-          console.warn('❌ Text extraction failed, but continuing with file storage:', textError.message);
-          extractedText = '';
+        } catch (textErr) {
+          console.warn('Text extraction failed during storage:', textErr.message);
           textExtractionMethod = 'failed';
         }
-      } else {
-        console.log('❌ File type not supported for text extraction:', file.type);
       }
 
-      // Store document
-      if (onProgress) onProgress({ stage: 'Saving to database...', progress: 90 });
-      
-      const documentData = {
-        id: documentId,
-        userId: this.userId,
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        uploadDate: new Date().toISOString(),
-        processingTime: Date.now() - startTime,
-        file: fileData,
-        textContent: extractedText,
-        textExtractionMethod: textExtractionMethod,
-        canExtractText: canExtractText,
-        hasText: extractedText.length > 0
-      };
+      // 4. Register the document metadata in MongoDB
+      if (onProgress) onProgress({ stage: 'Registering upload metadata...', progress: 95 });
 
-      await this.db.put('documents', documentData);
+      const registerRes = await axios.post(
+        `${API_URL}/documents`,
+        {
+          name: file.name,
+          type: file.type,
+          size: file.size,
+          r2Key,
+          textContent: extractedText,
+          textExtractionMethod
+        },
+        getHeaders()
+      );
 
-      if (onProgress) onProgress({ stage: 'Upload completed!', progress: 100 });
+      const savedDoc = this.mapMongoDoc(registerRes.data.document);
+
+      if (onProgress) onProgress({ stage: 'Upload completed successfully!', progress: 100 });
 
       return {
         success: true,
-        documentId: documentId,
-        document: documentData,
-        textExtracted: extractedText.length > 0,
-        textLength: extractedText.length
+        documentId: savedDoc.id,
+        document: savedDoc,
+        textExtracted: savedDoc.hasText,
+        textLength: savedDoc.textContent.length
       };
-
     } catch (error) {
-      console.error('Error storing document:', error);
+      console.error('Error storing document via R2 proxy:', error);
       if (onProgress) onProgress({ stage: 'Upload failed', progress: 0, error: error.message });
       throw error;
     }
   }
 
-  // Get the raw file data from a stored document
+  // Get raw file from Cloudflare R2 using pre-signed GET URL
   async getDocumentFile(documentId) {
     try {
-      await this.initDB();
-      const document = await this.db.get('documents', documentId);
-      
-      if (!document) {
-        throw new Error('Document not found');
-      }
-      
-      // Check if user owns this document
-      if (document.userId !== this.userId) {
-        throw new Error('Access denied - document belongs to another user');
-      }
-      
-      // Convert base64 back to file/blob
-      const response = await fetch(document.file);
-      const blob = await response.blob();
-      const file = new File([blob], document.name, { type: document.type });
-      
+      // 1. Fetch pre-signed GET URL from the server
+      const downloadUrlRes = await axios.get(`${API_URL}/documents/${documentId}/download-url`, getHeaders());
+      const { downloadUrl } = downloadUrlRes.data;
+
+      // 2. Fetch document metadata
+      const docRes = await axios.get(`${API_URL}/documents/${documentId}`, getHeaders());
+      const mappedDoc = this.mapMongoDoc(docRes.data.document);
+
+      // 3. Fetch file binary bytes from pre-signed URL
+      const fileResponse = await fetch(downloadUrl);
+      const blob = await fileResponse.blob();
+      const file = new File([blob], mappedDoc.name, { type: mappedDoc.type });
+
       return {
         success: true,
-        documentId: documentId,
-        document: document,
-        file: file,
-        blob: blob,
-        base64Data: document.file,
+        documentId,
+        document: mappedDoc,
+        file,
+        blob,
+        base64Data: downloadUrl, // Return the URL itself for file source references
         metadata: {
-          name: document.name,
-          type: document.type,
-          size: document.size,
-          uploadDate: document.uploadDate
+          name: mappedDoc.name,
+          type: mappedDoc.type,
+          size: mappedDoc.size,
+          uploadDate: mappedDoc.uploadDate
         }
       };
-      
     } catch (error) {
-      console.error('Error getting document file:', error);
+      console.error('Error fetching document file from R2:', error);
       throw error;
     }
   }
 
-  // Download a stored document
+  // Triggers browser download of original file from R2
   async downloadDocument(documentId) {
     try {
       const fileData = await this.getDocumentFile(documentId);
       
-      // Create download link
       const url = URL.createObjectURL(fileData.blob);
       const link = document.createElement('a');
       link.href = url;
@@ -216,283 +223,213 @@ class SimpleDocumentStorage {
         success: true,
         message: 'Download started'
       };
-      
     } catch (error) {
-      console.error('Error downloading document:', error);
+      console.error('Error downloading document from R2:', error);
       throw error;
     }
   }
 
-  // Get all document files as an array (for batch processing)
+  // Returns array of all files for batch processing
   async getAllDocumentFiles() {
     try {
-      await this.initDB();
       const documents = await this.getAllDocuments();
-      
       const fileDataArray = [];
-      
+
       for (const doc of documents) {
-        const response = await fetch(doc.file);
-        const blob = await response.blob();
-        const file = new File([blob], doc.name, { type: doc.type });
-        
-        fileDataArray.push({
-          documentId: doc.id,
-          file: file,
-          blob: blob,
-          base64Data: doc.file,
-          metadata: {
-            name: doc.name,
-            type: doc.type,
-            size: doc.size,
-            uploadDate: doc.uploadDate,
-            hasText: doc.hasText,
-            textContent: doc.textContent
-          }
-        });
+        try {
+          const fileData = await this.getDocumentFile(doc.id);
+          fileDataArray.push(fileData);
+        } catch (e) {
+          console.warn(`Could not fetch binary file for ${doc.name}, skipping:`, e.message);
+        }
       }
-      
+
       return {
         success: true,
         files: fileDataArray,
         count: fileDataArray.length
       };
-      
     } catch (error) {
-      console.error('Error getting all document files:', error);
+      console.error('Error retrieving batch document files:', error);
       throw error;
     }
   }
 
-  // Export document data as JSON (for external processing)
+  // Exports document metadata + base64 file data as JSON
   async exportDocumentData(documentId) {
     try {
-      await this.initDB();
-      const document = await this.db.get('documents', documentId);
+      const fileData = await this.getDocumentFile(documentId);
       
-      if (!document) {
-        throw new Error('Document not found');
-      }
-      
-      if (document.userId !== this.userId) {
-        throw new Error('Access denied - document belongs to another user');
-      }
-      
-      const exportData = {
-        documentId: document.id,
-        name: document.name,
-        type: document.type,
-        size: document.size,
-        uploadDate: document.uploadDate,
-        base64File: document.file,
-        textContent: document.textContent || '',
-        hasText: document.hasText || false,
-        textExtractionMethod: document.textExtractionMethod || 'none',
-        canExtractText: document.canExtractText || false
-      };
-      
-      return {
-        success: true,
-        data: exportData
-      };
-      
-    } catch (error) {
-      console.error('Error exporting document data:', error);
-      throw error;
-    }
-  }
-
-  // Get extracted text from a document
-  async getDocumentText(documentId) {
-    try {
-      await this.initDB();
-      const document = await this.db.get('documents', documentId);
-      
-      if (!document) {
-        throw new Error('Document not found');
-      }
-      
-      // Check if user owns this document
-      if (document.userId !== this.userId) {
-        throw new Error('Access denied - document belongs to another user');
-      }
-      
-      return {
-        success: true,
-        documentId: documentId,
-        documentName: document.name,
-        textContent: document.textContent || '',
-        hasText: document.hasText || false,
-        textExtractionMethod: document.textExtractionMethod || 'none',
-        extractedAt: document.uploadDate
-      };
-      
-    } catch (error) {
-      console.error('Error getting document text:', error);
-      throw error;
-    }
-  }
-
-  // Re-extract text from a stored document
-  async reExtractDocumentText(documentId, onProgress = null) {
-    try {
-      await this.initDB();
-      const document = await this.db.get('documents', documentId);
-      
-      if (!document) {
-        throw new Error('Document not found');
-      }
-      
-      if (document.userId !== this.userId) {
-        throw new Error('Access denied - document belongs to another user');
-      }
-
-      if (onProgress) onProgress({ stage: 'Loading document...', progress: 10 });
-      
-      // Convert base64 back to file
-      const response = await fetch(document.file);
-      const blob = await response.blob();
-      const file = new File([blob], document.name, { type: document.type });
-      
-      if (onProgress) onProgress({ stage: 'Re-extracting text...', progress: 30 });
-      
-      // Extract text
-      const textResult = await textExtractor.extractText(file, (textProgress) => {
-        const scaledProgress = 30 + (textProgress.progress * 0.6);
-        if (onProgress) onProgress({ 
-          stage: textProgress.stage || 'Extracting text...', 
-          progress: Math.round(scaledProgress) 
-        });
+      // Convert blob to base64 dynamically for the JSON export package
+      const reader = new FileReader();
+      const base64File = await new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(fileData.blob);
       });
 
-      // Update document with new text
-      const updatedDocument = {
-        ...document,
-        textContent: textResult.text || '',
-        textExtractionMethod: textResult.method || 'failed',
-        hasText: (textResult.text || '').length > 0,
-        lastTextExtraction: new Date().toISOString()
+      return {
+        success: true,
+        data: {
+          documentId,
+          name: fileData.metadata.name,
+          type: fileData.metadata.type,
+          size: fileData.metadata.size,
+          uploadDate: fileData.metadata.uploadDate,
+          base64File,
+          textContent: fileData.document.textContent || '',
+          hasText: fileData.document.hasText,
+          textExtractionMethod: fileData.document.textExtractionMethod,
+          canExtractText: fileData.document.canExtractText
+        }
       };
+    } catch (error) {
+      console.error('Error exporting document details:', error);
+      throw error;
+    }
+  }
 
-      await this.db.put('documents', updatedDocument);
-      
-      if (onProgress) onProgress({ stage: 'Text extraction completed!', progress: 100 });
+  // Retrieve text content from MongoDB
+  async getDocumentText(documentId) {
+    try {
+      const res = await axios.get(`${API_URL}/documents/${documentId}`, getHeaders());
+      const mappedDoc = this.mapMongoDoc(res.data.document);
 
       return {
         success: true,
-        documentId: documentId,
+        documentId,
+        documentName: mappedDoc.name,
+        textContent: mappedDoc.textContent,
+        hasText: mappedDoc.hasText,
+        textExtractionMethod: mappedDoc.textExtractionMethod,
+        extractedAt: mappedDoc.uploadDate
+      };
+    } catch (error) {
+      console.error('Error fetching document text content:', error);
+      throw error;
+    }
+  }
+
+  // Re-run text extraction locally and save updated text back to MongoDB
+  async reExtractDocumentText(documentId, onProgress = null) {
+    try {
+      if (onProgress) onProgress({ stage: 'Retrieving source file...', progress: 10 });
+      
+      const fileData = await this.getDocumentFile(documentId);
+      
+      if (onProgress) onProgress({ stage: 'Running local text extractor...', progress: 30 });
+      
+      const textResult = await textExtractor.extractText(fileData.file, (textProgress) => {
+        const scaledProgress = 30 + (textProgress.progress * 0.6);
+        if (onProgress) {
+          onProgress({ 
+            stage: textProgress.stage || 'Extracting text...', 
+            progress: Math.round(scaledProgress) 
+          });
+        }
+      });
+
+      if (onProgress) onProgress({ stage: 'Updating database...', progress: 90 });
+
+      // Save the text back to MongoDB
+      await axios.put(
+        `${API_URL}/documents/${documentId}/ai-results`,
+        {
+          textContent: textResult.text || '',
+          textExtractionMethod: textResult.method || 'failed'
+        },
+        getHeaders()
+      );
+
+      if (onProgress) onProgress({ stage: 'Extraction completed!', progress: 100 });
+
+      return {
+        success: true,
+        documentId,
         textContent: textResult.text || '',
         textLength: (textResult.text || '').length,
         method: textResult.method
       };
-
     } catch (error) {
-      console.error('Error re-extracting document text:', error);
+      console.error('Error re-extracting document text content:', error);
       if (onProgress) onProgress({ stage: 'Text extraction failed', progress: 0, error: error.message });
       throw error;
     }
   }
 
-  // Save AI generated results to a document
+  // Save AI summaries or study guides to the MongoDB record
   async updateAiResults(documentId, aiData) {
     try {
-      await this.initDB();
-      const document = await this.db.get('documents', documentId);
-      
-      if (!document) {
-        throw new Error('Document not found');
-      }
-      
-      if (document.userId !== this.userId) {
-        throw new Error('Access denied - document belongs to another user');
-      }
-
-      // Merge summaries safely
-      const updatedSummaries = {
-        ...(document.summaries || {}),
-        ...(aiData.summaries || {})
-      };
-
-      // Merge study materials if provided
-      const updatedStudyMaterials = aiData.studyMaterials || document.studyMaterials;
-
-      const updatedDocument = {
-        ...document,
-        summaries: updatedSummaries,
-        studyMaterials: updatedStudyMaterials,
-        lastAiInteraction: new Date().toISOString()
-      };
-
-      await this.db.put('documents', updatedDocument);
+      await axios.put(
+        `${API_URL}/documents/${documentId}/ai-results`,
+        aiData,
+        getHeaders()
+      );
       return { success: true };
     } catch (error) {
-      console.error('Error updating AI results:', error);
+      console.error('Error updating document AI results:', error);
       throw error;
     }
   }
 
-  // Get all documents for current user
+  // Get all documents metadata for current user
   async getAllDocuments() {
     try {
-      await this.initDB();
-      const allDocuments = await this.db.getAll('documents');
-      // Filter documents by current user ID
-      return allDocuments.filter(doc => doc.userId === this.userId);
+      const res = await axios.get(`${API_URL}/documents`, getHeaders());
+      if (res.data && res.data.success) {
+        return res.data.documents.map(doc => this.mapMongoDoc(doc));
+      }
+      return [];
     } catch (error) {
-      console.error('Error getting documents:', error);
+      console.error('Error getting all documents from server:', error);
       return [];
     }
   }
 
-  // Get document by ID
+  // Get specific document metadata
   async getDocument(documentId) {
     try {
-      await this.initDB();
-      return await this.db.get('documents', documentId);
+      const res = await axios.get(`${API_URL}/documents/${documentId}`, getHeaders());
+      if (res.data && res.data.success) {
+        return this.mapMongoDoc(res.data.document);
+      }
+      return null;
     } catch (error) {
-      console.error('Error getting document:', error);
+      console.error('Error getting single document details:', error);
       return null;
     }
   }
 
-  // Delete document
+  // Delete a document from R2 and MongoDB
   async deleteDocument(documentId) {
     try {
-      await this.initDB();
-      console.log('Deleting document:', documentId);
-      await this.db.delete('documents', documentId);
-      console.log('Document deleted successfully');
-      return true;
+      console.log('Requesting document deletion for:', documentId);
+      const res = await axios.delete(`${API_URL}/documents/${documentId}`, getHeaders());
+      return !!(res.data && res.data.success);
     } catch (error) {
-      console.error('Error deleting document:', error);
+      console.error('Error deleting document from cloud storage:', error);
       return false;
     }
   }
 
-  // Delete multiple documents
+  // Bulk delete helper
   async deleteMultipleDocuments(documentIds) {
     try {
-      await this.initDB();
       const results = [];
-      
       for (const id of documentIds) {
         const result = await this.deleteDocument(id);
         results.push({ id, success: result });
       }
-      
       return results;
     } catch (error) {
-      console.error('Error deleting multiple documents:', error);
+      console.error('Error during bulk document deletion:', error);
       return documentIds.map(id => ({ id, success: false }));
     }
   }
 
-  // Get storage statistics for current user
+  // Generate storage statistics using server files list
   async getStorageStats() {
     try {
-      await this.initDB();
-      const documents = await this.getAllDocuments(); // Already filtered by user
-      
+      const documents = await this.getAllDocuments();
       const fileTypes = {};
 
       for (const doc of documents) {
@@ -502,13 +439,13 @@ class SimpleDocumentStorage {
 
       return {
         totalDocuments: documents.length,
-        fileTypes: fileTypes,
+        fileTypes,
         recentDocuments: documents
           .sort((a, b) => new Date(b.uploadDate) - new Date(a.uploadDate))
-          .slice(0, 10) // Show more recent documents
+          .slice(0, 10)
       };
     } catch (error) {
-      console.error('Error getting storage stats:', error);
+      console.error('Error compiling storage stats:', error);
       return {
         totalDocuments: 0,
         fileTypes: {},

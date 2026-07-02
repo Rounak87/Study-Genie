@@ -25,41 +25,9 @@ ${documentText.substring(0, 500000)}
 `;
 
     try {
-      console.log("🤖 Generating Quiz via Gemini [Primary]...");
-      
-      const config = {
-        responseMimeType: "application/json",
-        temperature: 0.7,
-      };
-      
-      const primaryModel = aiService.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: config,
-      });
-      const fallbackModel = aiService.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: config,
-      });
-
-      let text = "";
-      try {
-        const response = await primaryModel.generateContent(prompt);
-        text = response.response.text();
-      } catch (err) {
-        const isQuotaError = 
-          err?.status === 429 || 
-          err?.message?.toLowerCase().includes("quota") || 
-          err?.message?.toLowerCase().includes("rate limit") ||
-          err?.message?.toLowerCase().includes("exhausted");
-        
-        if (isQuotaError) {
-          console.warn("⚠️ Primary Gemini model quota exceeded for Quiz! Switching to Flash-Lite backup...");
-          const fallbackResponse = await fallbackModel.generateContent(prompt);
-          text = fallbackResponse.response.text();
-        } else {
-          throw err;
-        }
-      }
+      console.log("🤖 Generating Quiz via server AI proxy...");
+      const response = await aiService.generateResponse(prompt, { raw: true, json: true });
+      const text = response.answer;
 
       let questions = [];
 
@@ -119,41 +87,9 @@ ${documentText.substring(0, 500000)}
 `;
 
     try {
-      console.log("🤖 Generating Flashcards via Gemini [Primary]...");
-      
-      const config = {
-        responseMimeType: "application/json",
-        temperature: 0.7,
-      };
-      
-      const primaryModel = aiService.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: config,
-      });
-      const fallbackModel = aiService.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
-        generationConfig: config,
-      });
-
-      let text = "";
-      try {
-        const response = await primaryModel.generateContent(prompt);
-        text = response.response.text();
-      } catch (err) {
-        const isQuotaError = 
-          err?.status === 429 || 
-          err?.message?.toLowerCase().includes("quota") || 
-          err?.message?.toLowerCase().includes("rate limit") ||
-          err?.message?.toLowerCase().includes("exhausted");
-        
-        if (isQuotaError) {
-          console.warn("⚠️ Primary Gemini model quota exceeded for Flashcards! Switching to Flash-Lite backup...");
-          const fallbackResponse = await fallbackModel.generateContent(prompt);
-          text = fallbackResponse.response.text();
-        } else {
-          throw err;
-        }
-      }
+      console.log("🤖 Generating Flashcards via server AI proxy...");
+      const response = await aiService.generateResponse(prompt, { raw: true, json: true });
+      const text = response.answer;
 
       let flashcards = [];
 

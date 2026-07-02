@@ -22,7 +22,6 @@ import {
   LightBulbIcon
 } from '@heroicons/react/24/outline'
 import documentStorage from '../services/simpleDocumentStorage'
-import { dataTracker } from '../services/dataTracker'
 import textExtractor from '../services/textExtraction'
 import summarizationService from '../services/summarizationService'
 
@@ -238,9 +237,6 @@ const Upload = () => {
               }
             : f
         ))
-
-        // Track the upload for analytics
-        await dataTracker.trackFileUpload(fileObj.file.name, fileObj.file.type, fileObj.file.size)
 
         console.log('Document stored successfully:', result)
 

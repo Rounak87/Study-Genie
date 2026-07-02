@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState } from "react";
-import studyMaterialGenerator from "../services/studyMaterialGenerator";
 
 const SummaryContext = createContext();
 
@@ -18,6 +17,7 @@ export const SummaryProvider = ({ children }) => {
     if (!documentText) return;
 
     try {
+      const { default: studyMaterialGenerator } = await import("../services/studyMaterialGenerator");
       const materials =
         await studyMaterialGenerator.generateStudyMaterials(documentText);
       setStudyMaterials(materials);
