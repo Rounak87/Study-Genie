@@ -1,6 +1,4 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const pdfParse = require('pdf-parse');
+import { PDFParse } from 'pdf-parse';
 
 /**
  * Extract text content from a file buffer based on its MIME type.
@@ -19,11 +17,14 @@ export const parseDocumentBuffer = async (buffer, mimeType) => {
 
   switch (normalizedMime) {
     case 'application/pdf':
-      console.log('📄 Parsing PDF buffer using pdf-parse...');
+      console.log('📄 Parsing PDF buffer using PDFParse ESM...');
       try {
-        const data = await pdfParse(buffer);
-        // Clean up double spaces/newlines slightly if needed, but keep core layout
-        return data.text || '';
+        // Convert Buffer to Uint8Array as required by newer pdfjs-dist
+        const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+        const parser = new PDFParse(uint8);
+        await parser.load();
+        const result = await parser.getText();
+        return result.text || '';
       } catch (err) {
         console.error('Error parsing PDF content:', err);
         throw new Error('Failed to parse PDF document content: ' + err.message);

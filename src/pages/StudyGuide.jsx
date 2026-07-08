@@ -270,29 +270,51 @@ const StudyGuide = () => {
         const storeResult = await documentStorage.storeDocument(
           file,
           (prog) => {
-            if (prog.progress) setProcessingProgress(prog.progress * 0.5); // 0-50%
+            if (prog.progress) setProcessingProgress(prog.progress * 0.4); // 0-40% for upload stage
           },
         );
 
-        if (!storeResult.textExtracted) {
-          throw new Error(
-            "Could not extract readable text from this document.",
-          );
+        const docId = storeResult.documentId;
+        setActiveDocId(docId);
+        
+        // Refresh history to show new doc (in pending state)
+        loadHistory();
+
+        // Start polling for server-side processing completion
+        setProcessingStage("Server is analyzing document content (this may take a few seconds)...");
+        setProcessingProgress(50);
+
+        let finishedDoc = null;
+        const pollInterval = 2000;
+
+        while (!finishedDoc) {
+          await new Promise(resolve => setTimeout(resolve, pollInterval));
+          const docCheck = await documentStorage.getDocument(docId);
+          if (docCheck) {
+            if (docCheck.status === 'completed') {
+              finishedDoc = docCheck;
+            } else if (docCheck.status === 'failed') {
+              throw new Error("Server failed to extract text from this document. Please verify the file is not corrupted.");
+            } else {
+              // Document is still processing
+              setProcessingStage(`Server is analyzing document... (Status: ${docCheck.status})`);
+            }
+          } else {
+            throw new Error("Unable to retrieve document status from server.");
+          }
         }
 
-        const docId = storeResult.documentId;
+        setProcessingProgress(60);
+        
+        // Fetch the extracted text from MongoDB
         const textData = await documentStorage.getDocumentText(docId);
-
         setCurrentDocText(textData.textContent);
-        setActiveDocId(docId);
-
-        // Refresh history to show new doc
-        loadHistory();
 
         setProcessingStage(
           `Analyzing content & generating smart ${notesStyle} notes (this may take a minute)...`,
         );
-        setProcessingProgress(60);
+        setProcessingProgress(70);
+        
         const sumResult = await summarizationService.summarizeText(
           textData.textContent,
           notesStyle,
@@ -311,7 +333,8 @@ const StudyGuide = () => {
           "Crafting interactive flashcards & practice quiz automatically...",
         );
         setProcessingProgress(85);
-        // PASS RAW TEXT TO GENERATOR, NOT SUMMARY
+        
+        // Pass raw text to generator
         const generatedMaterials = await generateStudyMaterials(textData.textContent);
 
         await documentStorage.updateAiResults(docId, {
@@ -376,11 +399,11 @@ const StudyGuide = () => {
 
   const generateAnswer = async (question) => {
     if (!question.trim()) return;
-    if (!currentDocText) {
+    if (!activeDocId) {
       const warnQnA = {
         id: Date.now(),
         question: question.trim(),
-        answer: "⚠️ Please upload a document first so I can answer questions about it!",
+        answer: "⚠️ Please select or upload a document first so I can answer questions about it!",
         timestamp: new Date().toLocaleTimeString(),
         type: "error",
       };
