@@ -190,9 +190,12 @@ export const askRAG = async (req, res) => {
   // 2. Generate vector embedding for the query using Gemini embedding API
   let relevantChunks = [];
   try {
-    const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    const embedModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
     console.log(`🚀 Generating query embedding for question: "${question}"`);
-    const embeddingResult = await embedModel.embedContent(question);
+    const embeddingResult = await embedModel.embedContent({
+      content: { parts: [{ text: question }] },
+      outputDimensionality: 768
+    });
     const queryVector = embeddingResult.embedding.values;
 
     // 3. Query MongoDB Atlas Vector Search
