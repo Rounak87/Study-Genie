@@ -2,6 +2,8 @@ import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sd
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { getR2Client, getR2BucketName } from '../utils/r2.js';
 import Document from '../models/Document.js';
+import DocumentChunk from '../models/DocumentChunk.js';
+import { addDocumentJob } from '../utils/queue.js';
 
 /**
  * Generate a pre-signed upload URL for Cloudflare R2
@@ -56,7 +58,7 @@ export const getUploadUrl = async (req, res) => {
  */
 export const createDocument = async (req, res) => {
   try {
-    const { name, type, size, r2Key, textContent, textExtractionMethod } = req.body;
+    const { name, type, size, r2Key } = req.body;
 
     if (!name || !type || !size || !r2Key) {
       return res.status(400).json({
@@ -71,12 +73,27 @@ export const createDocument = async (req, res) => {
       type,
       size,
       r2Key,
-      textContent: textContent || '',
-      textExtractionMethod: textExtractionMethod || 'none',
-      status: 'completed' // Marked completed since the frontend sends text content along with it
+      textContent: '',
+      textExtractionMethod: 'server-queue',
+      status: 'pending' // Initial status is pending; worker processes extraction asynchronously
     });
 
     await document.save();
+
+    // Enqueue document processing task
+    try {
+      await addDocumentJob(document._id, r2Key, req.user.id, type);
+      console.log(`🚀 Successfully queued background job for document: ${document._id}`);
+    } catch (queueError) {
+      console.error('⚠️ Failed to add job to BullMQ queue:', queueError.message);
+      // Fail the document status immediately since the queue is unreachable
+      document.status = 'failed';
+      await document.save();
+      return res.status(500).json({
+        success: false,
+        error: 'Failed to queue background text extraction task. Please verify your Redis configuration.'
+      });
+    }
 
     res.status(201).json({
       success: true,
@@ -238,7 +255,10 @@ export const deleteDocument = async (req, res) => {
       console.error('Cloudflare R2 deletion failed:', r2Error);
     }
 
-    // 2. Delete metadata from MongoDB
+    // 2. Delete chunks from MongoDB
+    await DocumentChunk.deleteMany({ documentId: req.params.id });
+
+    // 3. Delete metadata from MongoDB
     await Document.findByIdAndDelete(req.params.id);
 
     res.json({
