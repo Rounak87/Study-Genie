@@ -148,30 +148,25 @@ class RagTutorService {
 
   /**
    * Generate a RAG-powered answer for the user's question.
-   * Makes exactly ONE Gemini API call.
+   * Proxies directly to server-side vector search.
    *
    * @param {string} question - The user's question
-   * @param {string} documentText - Full text of the uploaded document
+   * @param {string} documentId - The document ID
    * @param {Array} conversationHistory - Previous Q&A pairs [{question, answer}]
    * @returns {Promise<string>} - Markdown-formatted answer
    */
-  async generateAnswer(question, documentText, conversationHistory = []) {
+  async generateAnswer(question, documentId, conversationHistory = []) {
     if (!question || !question.trim()) {
       throw new Error("Question is required.");
     }
 
-    // Step 1: Local chunk retrieval (zero API calls in the browser)
-    const relevantChunks = this.findRelevantChunks(question, documentText, 4);
-
-    // Step 2: Send payloads securely to the server
     try {
       const token = localStorage.getItem("studygenie_token");
-      console.log(`🎓 RAG Tutor: Proxying query with ${relevantChunks.length} chunks to server...`);
+      console.log(`🎓 RAG Tutor: Proxying query for document ${documentId} to server...`);
       
       const response = await axios.post(`${API_URL}/ai/rag-ask`, {
         question,
-        excerpts: relevantChunks,
-        documentText: documentText ? documentText.substring(0, 3000) : '',
+        documentId,
         conversationHistory
       }, {
         headers: {

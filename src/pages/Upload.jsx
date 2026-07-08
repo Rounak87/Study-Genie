@@ -50,6 +50,19 @@ const Upload = () => {
     textExtractor.testExtraction()
   }, [])
 
+  // Poll for pending/processing documents in the library
+  useEffect(() => {
+    const hasPendingDocs = storedDocuments.some(doc => doc.status === 'pending' || doc.status === 'processing');
+    if (!hasPendingDocs) return;
+
+    console.log("🔍 Pending documents detected in library. Polling for updates...");
+    const interval = setInterval(() => {
+      loadStoredDocuments();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [storedDocuments]);
+
   const loadStoredDocuments = async () => {
     try {
       setLoading(true)
@@ -221,19 +234,17 @@ const Upload = () => {
 
         // Text extracted - summary will be generated when user clicks "Generate Summary" button
 
-        // Update file status to completed
+        // Update file status to completed (queued in background)
         setFiles(prev => prev.map(f => 
           f.id === fileObj.id 
             ? { 
                 ...f, 
                 status: 'completed', 
                 progress: 100, 
-                stage: result.textExtracted ? 
-                  `Completed! Ready for summarization` : 
-                  'Completed! (No text extracted)',
+                stage: 'Uploaded successfully! Server-side analysis in progress...',
                 documentId: result.documentId,
-                textExtracted: result.textExtracted,
-                textLength: result.textLength
+                textExtracted: false,
+                textLength: 0
               }
             : f
         ))
@@ -401,6 +412,16 @@ const Upload = () => {
   }
 
   const viewDocument = async (documentId) => {
+    // Check if the document is still processing on the server
+    const docObj = storedDocuments.find(d => d.id === documentId);
+    if (docObj && (docObj.status === 'pending' || docObj.status === 'processing')) {
+      alert("This document is still being analyzed on the server. Please wait a moment until it completes!");
+      return;
+    }
+    if (docObj && docObj.status === 'failed') {
+      alert("This document failed server-side text extraction. Please delete and re-upload it.");
+      return;
+    }
     try {
       const textData = await documentStorage.getDocumentText(documentId)
       
@@ -992,8 +1013,14 @@ const Upload = () => {
                         >
                           <div className="relative">
                             <DocumentTextIcon className="w-8 h-8 text-blue-400" />
-                            {doc.hasText && (
+                            {doc.status === 'completed' && doc.hasText && (
                               <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border border-white"></div>
+                            )}
+                            {(doc.status === 'pending' || doc.status === 'processing') && (
+                              <div className="absolute -top-1 -right-1 w-3 h-3 bg-amber-500 rounded-full border border-white animate-pulse"></div>
+                            )}
+                            {doc.status === 'failed' && (
+                              <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -1001,14 +1028,21 @@ const Upload = () => {
                             <p className="text-xs text-gray-400">
                               {new Date(doc.uploadDate).toLocaleDateString()} • {(doc.size / 1024 / 1024).toFixed(1)}MB
                             </p>
-                            {doc.hasText && (
-                              <p className="text-xs text-green-400 mt-1">
+                            {doc.status === 'pending' || doc.status === 'processing' ? (
+                              <p className="text-xs text-amber-400 mt-1 animate-pulse font-semibold">
+                                ⏳ Analyzing on server...
+                              </p>
+                            ) : doc.status === 'failed' ? (
+                              <p className="text-xs text-red-400 mt-1 font-semibold">
+                                ❌ Extraction failed
+                              </p>
+                            ) : doc.hasText ? (
+                              <p className="text-xs text-green-400 mt-1 font-semibold">
                                 ✅ Text extracted ({doc.textContent?.length || 0} chars)
                               </p>
-                            )}
-                            {doc.canExtractText && !doc.hasText && (
-                              <p className="text-xs text-yellow-400 mt-1">
-                                ⚠️ Text extraction available
+                            ) : (
+                              <p className="text-xs text-yellow-400 mt-1 font-semibold">
+                                ⚠️ No text extracted
                               </p>
                             )}
                           </div>

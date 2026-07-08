@@ -94,8 +94,8 @@ class SimpleDocumentStorage {
         },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          // Scale progress bar to map to 10% - 50% for visual feedback
-          const scaledProgress = 10 + (percentCompleted * 0.4);
+          // Scale progress bar to map to 10% - 90% for visual feedback
+          const scaledProgress = 10 + (percentCompleted * 0.8);
           if (onProgress) {
             onProgress({
               stage: `Uploading to cloud (${percentCompleted}%)...`,
@@ -105,38 +105,8 @@ class SimpleDocumentStorage {
         }
       });
 
-      // 3. Extract text content locally so RAG/AI summaries still work on upload
-      let extractedText = '';
-      let textExtractionMethod = 'none';
-      const canExtract = textExtractor.canExtractText(file);
-
-      if (canExtract) {
-        try {
-          if (onProgress) onProgress({ stage: 'Extracting text content...', progress: 60 });
-
-          const textResult = await textExtractor.extractText(file, (textProgress) => {
-            // Scale text extraction progress to 60% - 90%
-            const scaledProgress = 60 + (textProgress.progress * 0.3);
-            if (onProgress) {
-              onProgress({
-                stage: textProgress.stage || 'Extracting text...',
-                progress: Math.round(scaledProgress)
-              });
-            }
-          });
-
-          if (textResult.success && textResult.text) {
-            extractedText = textResult.text;
-            textExtractionMethod = textResult.method;
-          }
-        } catch (textErr) {
-          console.warn('Text extraction failed during storage:', textErr.message);
-          textExtractionMethod = 'failed';
-        }
-      }
-
-      // 4. Register the document metadata in MongoDB
-      if (onProgress) onProgress({ stage: 'Registering upload metadata...', progress: 95 });
+      // 3. Register the document metadata in MongoDB (status will be pending, task enqueued)
+      if (onProgress) onProgress({ stage: 'Queuing background server-side extraction...', progress: 95 });
 
       const registerRes = await axios.post(
         `${API_URL}/documents`,
@@ -144,23 +114,21 @@ class SimpleDocumentStorage {
           name: file.name,
           type: file.type,
           size: file.size,
-          r2Key,
-          textContent: extractedText,
-          textExtractionMethod
+          r2Key
         },
         getHeaders()
       );
 
       const savedDoc = this.mapMongoDoc(registerRes.data.document);
 
-      if (onProgress) onProgress({ stage: 'Upload completed successfully!', progress: 100 });
+      if (onProgress) onProgress({ stage: 'Upload and queue complete!', progress: 100 });
 
       return {
         success: true,
         documentId: savedDoc.id,
         document: savedDoc,
-        textExtracted: savedDoc.hasText,
-        textLength: savedDoc.textContent.length
+        textExtracted: false,
+        textLength: 0
       };
     } catch (error) {
       console.error('Error storing document via R2 proxy:', error);

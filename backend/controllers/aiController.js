@@ -1,4 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import mongoose from 'mongoose';
+import Document from '../models/Document.js';
+import DocumentChunk from '../models/DocumentChunk.js';
 
 let genAI = null;
 let primaryModel = null;
@@ -161,10 +164,10 @@ Complexity level: ${complexity}
  * @access  Private
  */
 export const askRAG = async (req, res) => {
-  const { question, excerpts = [], documentText = '', conversationHistory = [] } = req.body;
+  const { question, documentId, conversationHistory = [] } = req.body;
 
-  if (!question) {
-    return res.status(400).json({ success: false, error: 'Please provide a question' });
+  if (!question || !documentId) {
+    return res.status(400).json({ success: false, error: 'Please provide question and documentId' });
   }
 
   initGemini();
@@ -173,8 +176,61 @@ export const askRAG = async (req, res) => {
     return res.status(500).json({ success: false, error: 'Gemini AI service is not initialized on the server.' });
   }
 
-  // Build the RAG system prompt
-  let prompt = `You are a friendly, expert AI Study Tutor. A student has uploaded a document and is asking you questions about it. Your job is to provide **clear, detailed, and educational** answers based on the document content.
+  // 1. Fetch document name for prompt personalization
+  let docName = 'Document';
+  try {
+    const document = await Document.findById(documentId).select('name');
+    if (document) {
+      docName = document.name;
+    }
+  } catch (err) {
+    console.warn('Could not retrieve document name:', err.message);
+  }
+
+  // 2. Generate vector embedding for the query using Gemini embedding API
+  let relevantChunks = [];
+  try {
+    const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
+    console.log(`🚀 Generating query embedding for question: "${question}"`);
+    const embeddingResult = await embedModel.embedContent(question);
+    const queryVector = embeddingResult.embedding.values;
+
+    // 3. Query MongoDB Atlas Vector Search
+    console.log(`🔍 Querying MongoDB Atlas Vector Search for docId: ${documentId}`);
+    const results = await DocumentChunk.aggregate([
+      {
+        $vectorSearch: {
+          index: 'vector_index', // Atlas Vector Search index name
+          path: 'embedding',
+          queryVector: queryVector,
+          numCandidates: 40,
+          limit: 4,
+          filter: {
+            documentId: new mongoose.Types.ObjectId(documentId)
+          }
+        }
+      }
+    ]);
+
+    console.log(`✅ Atlas Vector Search retrieved ${results.length} relevant chunks.`);
+    relevantChunks = results.map(r => r.text);
+
+  } catch (error) {
+    console.error('❌ MongoDB Atlas Vector Search query failed:', error);
+    // Graceful fallback to document's textContent if index doesn't exist yet
+    console.log('🔄 Vector Search failed or index not ready. Falling back to document text overview...');
+    try {
+      const doc = await Document.findById(documentId).select('textContent');
+      if (doc && doc.textContent) {
+        relevantChunks = [doc.textContent.substring(0, 3000)];
+      }
+    } catch (fallbackErr) {
+      console.error('Fallback failed:', fallbackErr);
+    }
+  }
+
+  // 4. Build prompt
+  let prompt = `You are a friendly, expert AI Study Tutor. A student has uploaded a document named "${docName}" and is asking you questions about it. Your job is to provide **clear, detailed, and educational** answers based on the document content.
 
 ## Your Guidelines
 - Answer using information from the document excerpts provided below
@@ -186,20 +242,11 @@ export const askRAG = async (req, res) => {
 
 `;
 
-  // Add document excerpts context (from IndexedDB match)
-  if (excerpts && excerpts.length > 0) {
+  if (relevantChunks && relevantChunks.length > 0) {
     prompt += `## Relevant Document Excerpts\n\n`;
-    excerpts.forEach((excerpt, i) => {
-      // Handle either string array or object array with .text key
-      const excerptText = typeof excerpt === 'string' ? excerpt : (excerpt.text || excerpt.pageContent);
-      if (excerptText) {
-        prompt += `### Excerpt ${i + 1}\n${excerptText}\n\n`;
-      }
+    relevantChunks.forEach((excerpt, i) => {
+      prompt += `### Excerpt ${i + 1}\n${excerpt}\n\n`;
     });
-  } else if (documentText && documentText.length > 0) {
-    // Fallback context: first 3000 characters
-    const preview = documentText.substring(0, 3000);
-    prompt += `## Document Overview\n${preview}\n\n`;
   }
 
   // Add RAG conversation history context
@@ -207,7 +254,6 @@ export const askRAG = async (req, res) => {
     const recent = conversationHistory.slice(-4);
     prompt += `## Recent Conversation\n`;
     recent.forEach((msg) => {
-      // Supports both frontend-style formats {sender, text} or RAG tutor style {question, answer}
       if (msg.question && msg.answer) {
         prompt += `**Student:** ${msg.question}\n**Tutor:** ${msg.answer}\n\n`;
       } else if (msg.sender && msg.text) {

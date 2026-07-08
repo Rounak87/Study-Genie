@@ -76,6 +76,19 @@ const StudyGuide = () => {
     loadHistory();
   }, []);
 
+  // Poll for pending/processing documents in the history
+  useEffect(() => {
+    const hasPendingDocs = historyDocs.some(doc => doc.status === 'pending' || doc.status === 'processing');
+    if (!hasPendingDocs) return;
+
+    console.log("🔍 Pending documents detected in history. Polling for updates...");
+    const interval = setInterval(() => {
+      loadHistory();
+    }, 3000);
+
+    return () => clearInterval(interval);
+  }, [historyDocs]);
+
   const loadHistory = async () => {
     try {
       const docs = await documentStorage.getAllDocuments();
@@ -136,8 +149,19 @@ const StudyGuide = () => {
 
   const handleDocumentClick = async (docObj) => {
     if (isProcessing) return;
+
+    // Check if the document is still processing on the server
+    if (docObj.status === 'pending' || docObj.status === 'processing') {
+      alert("This document is still being analyzed on the server. Please wait a moment until it completes!");
+      return;
+    }
+    if (docObj.status === 'failed') {
+      alert("This document failed server-side text extraction. Please try deleting and re-uploading.");
+      return;
+    }
+
     setIsProcessing(true);
-    setProcessingStage("Loading document from local storage...");
+    setProcessingStage("Loading study notes...");
     setProcessingProgress(30);
     clearStudyMaterials();
     setSummary("");
@@ -367,7 +391,7 @@ const StudyGuide = () => {
     try {
       const answer = await ragTutorService.generateAnswer(
         question,
-        currentDocText,
+        activeDocId,
         qnaHistory.map((q) => ({ question: q.question, answer: q.answer })),
       );
       const newQnA = {
@@ -467,9 +491,20 @@ const StudyGuide = () => {
                         {doc.name}
                       </span>
                     </div>
-                    <span className="text-xs text-gray-500 ml-7">
-                      {new Date(doc.uploadDate).toLocaleDateString()}
-                    </span>
+                    <div className="flex items-center justify-between w-full mt-1 pr-8">
+                      <span className="text-xs text-gray-500">
+                        {new Date(doc.uploadDate).toLocaleDateString()}
+                      </span>
+                      {doc.status === 'pending' || doc.status === 'processing' ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 font-semibold animate-pulse">
+                          Analyzing...
+                        </span>
+                      ) : doc.status === 'failed' ? (
+                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 font-semibold">
+                          Failed
+                        </span>
+                      ) : null}
+                    </div>
                     <button
                       onClick={(e) => handleDeleteDocument(doc, e)}
                       className="absolute right-4 top-1/2 -translate-y-1/2 p-2 rounded-full text-gray-500 hover:text-red-400 hover:bg-red-400/10 opacity-0 group-hover:opacity-100 transition-all focus:opacity-100"
