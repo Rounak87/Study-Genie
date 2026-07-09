@@ -148,43 +148,85 @@ class RagTutorService {
 
   /**
    * Generate a RAG-powered answer for the user's question.
-   * Proxies directly to server-side vector search.
+   * Streams responses using Server-Sent Events (SSE).
    *
    * @param {string} question - The user's question
    * @param {string} documentId - The document ID
    * @param {Array} conversationHistory - Previous Q&A pairs [{question, answer}]
-   * @returns {Promise<string>} - Markdown-formatted answer
+   * @param {Function} onChunk - Callback triggered with each new text segment: (text) => {}
+   * @returns {Promise<string>} - Complete markdown-formatted answer once finished
    */
-  async generateAnswer(question, documentId, conversationHistory = []) {
+  async generateAnswer(question, documentId, conversationHistory = [], onChunk = () => {}) {
     if (!question || !question.trim()) {
       throw new Error("Question is required.");
     }
 
     try {
       const token = localStorage.getItem("studygenie_token");
-      console.log(`🎓 RAG Tutor: Proxying query for document ${documentId} to server...`);
+      console.log(`🎓 RAG Tutor: Starting streaming query for document ${documentId}...`);
       
-      const response = await axios.post(`${API_URL}/ai/rag-ask`, {
-        question,
-        documentId,
-        conversationHistory
-      }, {
+      const response = await fetch(`${API_URL}/ai/rag-ask`, {
+        method: 'POST',
         headers: {
-          Authorization: token ? `Bearer ${token}` : ""
-        }
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ""
+        },
+        body: JSON.stringify({
+          question,
+          documentId,
+          conversationHistory
+        })
       });
 
-      if (response.data && response.data.success) {
-        const answer = response.data.answer.trim();
-        // Store in local conversation history for follow-ups
-        this.conversationHistory.push({ question, answer });
-        return answer;
-      } else {
-        throw new Error(response.data.error || "Failed to generate answer from server");
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText || `Server returned status ${response.status}`);
       }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+      let fullAnswer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        // Keep the last partial line in the buffer
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data: ")) continue;
+
+          const dataContent = trimmed.substring(6).trim();
+          if (dataContent === "[DONE]") {
+            continue;
+          }
+
+          try {
+            const parsed = JSON.parse(dataContent);
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            if (parsed.text) {
+              fullAnswer += parsed.text;
+              onChunk(parsed.text);
+            }
+          } catch (err) {
+            console.error("Error parsing streaming packet:", err);
+          }
+        }
+      }
+
+      // Store in local conversation history for follow-ups
+      this.conversationHistory.push({ question, answer: fullAnswer });
+      return fullAnswer;
     } catch (error) {
-      console.error("RAG Tutor Server Error:", error);
-      throw new Error(error.response?.data?.error || error.message || "Failed to generate answer");
+      console.error("RAG Tutor Streaming Error:", error);
+      throw new Error(error.message || "Failed to generate streaming answer");
     }
   }
 

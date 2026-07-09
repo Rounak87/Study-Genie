@@ -268,39 +268,46 @@ export const askRAG = async (req, res) => {
   prompt += `## Student's Question\n${question}\n\n`;
   prompt += `## Your Answer (use markdown formatting)\n`;
 
-  try {
-    console.log('🚀 Calling Gemini API (Primary: 2.5-flash) for RAG Tutor...');
-    const result = await primaryModel.generateContent(prompt);
-    const response = await result.response;
-    const answer = response.text().trim();
+  // Set Server-Sent Events headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
 
-    return res.json({
-      success: true,
-      answer,
-      source: 'gemini-flash',
-    });
+  try {
+    console.log('🚀 Calling Gemini API (Primary: 2.5-flash) for streaming RAG Tutor...');
+    const result = await primaryModel.generateContentStream(prompt);
+
+    for await (const chunk of result.stream) {
+      const chunkText = chunk.text();
+      res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+    }
+
+    res.write('data: [DONE]\n\n');
+    return res.end();
   } catch (error) {
-    console.warn('⚠️ Primary Gemini model failed/exceeded quota in RAG mode:', error.message);
+    console.warn('⚠️ Primary Gemini model failed/exceeded quota in streaming RAG:', error.message);
 
     if (fallbackModel) {
-      console.log('🔄 Switching to backup model (Gemini 2.5 Flash-Lite) for RAG...');
+      console.log('🔄 Switching to backup model (Gemini 2.5 Flash-Lite) for streaming RAG...');
       try {
-        const result = await fallbackModel.generateContent(prompt);
-        const response = await result.response;
-        const answer = response.text().trim();
+        const result = await fallbackModel.generateContentStream(prompt);
 
-        return res.json({
-          success: true,
-          answer,
-          source: 'gemini-flash-lite',
-        });
+        for await (const chunk of result.stream) {
+          const chunkText = chunk.text();
+          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+        }
+
+        res.write('data: [DONE]\n\n');
+        return res.end();
       } catch (fallbackError) {
-        console.error('❌ Gemini fallback model failed for RAG:', fallbackError);
-        return res.status(500).json({ success: false, error: 'All AI models failed to respond' });
+        console.error('❌ Gemini fallback model failed for streaming RAG:', fallbackError);
+        res.write(`data: ${JSON.stringify({ error: 'All AI models failed to respond' })}\n\n`);
+        return res.end();
       }
     }
 
-    return res.status(500).json({ success: false, error: error.message || 'AI request failed' });
+    res.write(`data: ${JSON.stringify({ error: error.message || 'AI request failed' })}\n\n`);
+    return res.end();
   }
 };
 

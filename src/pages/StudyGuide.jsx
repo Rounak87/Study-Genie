@@ -410,33 +410,45 @@ const StudyGuide = () => {
       setQnaHistory((prev) => [...prev, warnQnA]);
       return;
     }
+
+    const qnaId = Date.now();
+    const initialQnA = {
+      id: qnaId,
+      question: question.trim(),
+      answer: "",
+      timestamp: new Date().toLocaleTimeString(),
+      type: "success",
+    };
+    setQnaHistory((prev) => [...prev, initialQnA]);
+    setCurrentQuestion("");
     setIsLoadingAnswer(true);
+
     try {
-      const answer = await ragTutorService.generateAnswer(
+      await ragTutorService.generateAnswer(
         question,
         activeDocId,
         qnaHistory.map((q) => ({ question: q.question, answer: q.answer })),
+        (chunk) => {
+          setQnaHistory((prev) =>
+            prev.map((q) =>
+              q.id === qnaId ? { ...q, answer: q.answer + chunk } : q
+            )
+          );
+        }
       );
-      const newQnA = {
-        id: Date.now(),
-        question: question.trim(),
-        answer: answer,
-        timestamp: new Date().toLocaleTimeString(),
-        type: "success",
-      };
-      setQnaHistory((prev) => [...prev, newQnA]);
-      setCurrentQuestion("");
     } catch (error) {
       console.error("RAG Tutor Error:", error);
-      const errorQnA = {
-        id: Date.now(),
-        question: question.trim(),
-        answer:
-          "I'm sorry, I had trouble generating an answer. Please try again in a moment.",
-        timestamp: new Date().toLocaleTimeString(),
-        type: "error",
-      };
-      setQnaHistory((prev) => [...prev, errorQnA]);
+      setQnaHistory((prev) =>
+        prev.map((q) =>
+          q.id === qnaId
+            ? {
+                ...q,
+                answer: "I'm sorry, I had trouble generating an answer. Please try again in a moment.",
+                type: "error",
+              }
+            : q
+        )
+      );
     } finally {
       setIsLoadingAnswer(false);
     }
