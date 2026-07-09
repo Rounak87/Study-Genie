@@ -321,6 +321,11 @@ export const updateAiResults = async (req, res) => {
         ...(document.studyMaterials || {}),
         ...studyMaterials
       };
+      document.markModified('studyMaterials');
+    }
+
+    if (summaries) {
+      document.markModified('summaries');
     }
 
     await document.save();
