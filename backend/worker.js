@@ -1,8 +1,7 @@
 import './utils/env.js';
 import { Worker } from 'bullmq';
 import mongoose from 'mongoose';
-import { getR2Client, getR2BucketName } from './utils/r2.js';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import * as storageService from './services/storageService.js';
 import { parseDocumentBuffer } from './utils/documentParser.js';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import Document from './models/Document.js';
@@ -91,18 +90,7 @@ const startWorker = () => {
       await Document.findByIdAndUpdate(documentId, { status: 'processing' });
 
       // 2. Fetch binary from Cloudflare R2
-      console.log(`🔗 Downloading binary from R2: ${r2Key}`);
-      const r2Client = getR2Client();
-      const bucketName = getR2BucketName();
-
-      const getCommand = new GetObjectCommand({
-        Bucket: bucketName,
-        Key: r2Key,
-      });
-
-      const r2Response = await r2Client.send(getCommand);
-      const bytes = await r2Response.Body.transformToByteArray();
-      const buffer = Buffer.from(bytes);
+      const buffer = await storageService.downloadFile(r2Key);
 
       // 3. Extract text content using our modular parser
       console.log('📝 Extracting text from document buffer...');
