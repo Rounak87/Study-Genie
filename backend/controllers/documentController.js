@@ -1,9 +1,7 @@
-import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { getR2Client, getR2BucketName } from '../utils/r2.js';
 import Document from '../models/Document.js';
 import DocumentChunk from '../models/DocumentChunk.js';
 import { addDocumentJob } from '../utils/queue.js';
+import * as storageService from '../services/storageService.js';
 
 /**
  * Generate a pre-signed upload URL for Cloudflare R2
@@ -20,23 +18,11 @@ export const getUploadUrl = async (req, res) => {
       });
     }
 
-    const r2Client = getR2Client();
-    const bucketName = getR2BucketName();
-
-    // Sanitize filename to prevent directory traversal or URL issues
-    const sanitizedName = fileName.replace(/[^a-zA-Z0-9.-]/g, '_');
-    const r2Key = `uploads/${req.user.id}/${Date.now()}-${sanitizedName}`;
-
-    console.log(`Generating pre-signed R2 PUT URL for: ${r2Key} (Type: ${fileType})`);
-
-    const command = new PutObjectCommand({
-      Bucket: bucketName,
-      Key: r2Key,
-      ContentType: fileType
-    });
-
-    // Generate link valid for 10 minutes (600 seconds)
-    const uploadUrl = await getSignedUrl(r2Client, command, { expiresIn: 600 });
+    const { uploadUrl, r2Key } = await storageService.getPresignedUploadUrl(
+      fileName,
+      fileType,
+      req.user.id
+    );
 
     res.json({
       success: true,
@@ -240,15 +226,7 @@ export const deleteDocument = async (req, res) => {
 
     // 1. Delete binary from Cloudflare R2
     try {
-      const r2Client = getR2Client();
-      const bucketName = getR2BucketName();
-
-      const deleteCommand = new DeleteObjectCommand({
-        Bucket: bucketName,
-        Key: document.r2Key
-      });
-
-      await r2Client.send(deleteCommand);
+      await storageService.deleteFile(document.r2Key);
       console.log(`Deleted object from R2: ${document.r2Key}`);
     } catch (r2Error) {
       // Log the error but continue deleting metadata from Mongo so database state remains clean
