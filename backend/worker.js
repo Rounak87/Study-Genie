@@ -2,37 +2,14 @@ import './utils/env.js';
 import { Worker } from 'bullmq';
 import mongoose from 'mongoose';
 import * as storageService from './services/storageService.js';
+import * as embeddingService from './services/embeddingService.js';
 import { parseDocumentBuffer } from './utils/documentParser.js';
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import Document from './models/Document.js';
 import DocumentChunk from './models/DocumentChunk.js';
 import { redisConnection } from './utils/queue.js';
 
-const apiKey = process.env.GEMINI_API_KEY;
-
+// Helper delay sleep function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-// Retry wrapper for handling Gemini API free-tier quota limits
-async function embedBatchWithRetry(embedModel, batch, retries = 3, delay = 20000) {
-  try {
-    const embedResult = await embedModel.batchEmbedContents({
-      requests: batch.map((t) => ({
-        content: { parts: [{ text: t }] },
-        model: 'models/gemini-embedding-001',
-        outputDimensionality: 768,
-      })),
-    });
-    return embedResult.embeddings.map((e) => e.values);
-  } catch (error) {
-    const errorMsg = error.message || '';
-    if ((errorMsg.includes('429') || errorMsg.includes('quota') || errorMsg.includes('Quota')) && retries > 0) {
-      console.warn(`⚠️ Gemini embedding quota exceeded. Sleeping for ${delay / 1000}s before retry... (Retries remaining: ${retries})`);
-      await sleep(delay);
-      return embedBatchWithRetry(embedModel, batch, retries - 1, delay * 1.5);
-    }
-    throw error;
-  }
-}
 
 // Simple chunking helper - splits any document into at most 4 large overlapping chunks
 // This guarantees that we only need exactly 1 Gemini API request to embed the entire document.
@@ -107,44 +84,21 @@ const startWorker = () => {
       const chunks = chunkText(extractedText);
       console.log(`Generated ${chunks.length} chunks from document.`);
 
-      // 5. Generate Vector Embeddings using Google Gemini API
+      // 5. Generate Vector Embeddings using embeddingService
       if (chunks.length > 0) {
-        if (!apiKey) {
-          throw new Error('GEMINI_API_KEY is missing. Cannot generate embeddings.');
-        }
-
-        console.log('🤖 Connecting to Gemini gemini-embedding-001 model...');
-        const genAI = new GoogleGenerativeAI(apiKey);
-        const embedModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-
         // Clean existing chunks for this document in case of retries
         await DocumentChunk.deleteMany({ documentId });
 
-        // Generate embeddings in batches of 30 to avoid rate limits
-        const batchSize = 30;
-        const chunkDocuments = [];
+        console.log(`📡 Generating vector embeddings for ${chunks.length} chunks...`);
+        const embeddings = await embeddingService.generateEmbeddingsBatch(chunks);
 
-        for (let i = 0; i < chunks.length; i += batchSize) {
-          const batch = chunks.slice(i, i + batchSize);
-          console.log(`🔄 Embedding batch ${Math.floor(i / batchSize) + 1} of ${Math.ceil(chunks.length / batchSize)}...`);
-
-          const embeddings = await embedBatchWithRetry(embedModel, batch);
-
-          // Add a 2s delay between successful batches to avoid hitting the RPM limit
-          if (i + batchSize < chunks.length) {
-            await sleep(2000);
-          }
-
-          batch.forEach((textItem, idx) => {
-            chunkDocuments.push({
-              documentId,
-              userId,
-              text: textItem,
-              embedding: embeddings[idx],
-              chunkIndex: i + idx,
-            });
-          });
-        }
+        const chunkDocuments = chunks.map((textItem, idx) => ({
+          documentId,
+          userId,
+          text: textItem,
+          embedding: embeddings[idx],
+          chunkIndex: idx,
+        }));
 
         console.log(`💾 Inserting ${chunkDocuments.length} chunks into MongoDB...`);
         await DocumentChunk.insertMany(chunkDocuments);
