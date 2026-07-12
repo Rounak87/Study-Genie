@@ -1,58 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
 import mongoose from 'mongoose';
 import Document from '../models/Document.js';
 import DocumentChunk from '../models/DocumentChunk.js';
-
-let genAI = null;
-let primaryModel = null;
-let fallbackModel = null;
-
-// Initialize Google Generative AI using the server API key
-const initGemini = () => {
-  if (primaryModel && fallbackModel) return;
-
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.error('❌ Missing GEMINI_API_KEY environment variable on the server!');
-    return;
-  }
-
-  try {
-    genAI = new GoogleGenerativeAI(apiKey);
-    
-    const config = {
-      temperature: 0.7,
-      topP: 0.95,
-      topK: 40,
-      maxOutputTokens: 8192,
-    };
-
-    primaryModel = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash',
-      generationConfig: config,
-    });
-
-    fallbackModel = genAI.getGenerativeModel({
-      model: 'gemini-2.5-flash-lite',
-      generationConfig: config,
-    });
-
-    console.log('✅ Server-side Gemini initialized (Primary: 2.5-flash, Fallback: 2.5-flash-lite)');
-  } catch (error) {
-    console.error('❌ Failed to initialize Google Generative AI:', error);
-  }
-};
-
-// Check if error is a rate limit or quota error
-const isQuotaExceeded = (error) => {
-  const message = error?.message?.toLowerCase() || '';
-  return (
-    error?.status === 429 ||
-    message.includes('quota') ||
-    message.includes('rate limit') ||
-    message.includes('exhausted')
-  );
-};
+import * as aiService from '../services/aiService.js';
+import * as embeddingService from '../services/embeddingService.js';
 
 /**
  * @desc    Get general AI Tutor assistance
@@ -64,12 +14,6 @@ export const askTutor = async (req, res) => {
 
   if (!question) {
     return res.status(400).json({ success: false, error: 'Please provide a question' });
-  }
-
-  initGemini();
-
-  if (!primaryModel) {
-    return res.status(500).json({ success: false, error: 'Gemini AI service is not initialized on the server.' });
   }
 
   // 1. Prepare Prompt
@@ -96,64 +40,15 @@ Complexity level: ${complexity}
     prompt += `\nProvide a clear, educational response suitable for a student. Use examples and step-by-step explanations when helpful. Keep the response concise (under 200 words).`;
   }
 
-  // 2. Configure Model Settings (JSON format fallback client-side if needed)
-  let activeModel = primaryModel;
-  let activeFallback = fallbackModel;
-
-  if (json) {
-    try {
-      activeModel = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash',
-        generationConfig: {
-          temperature: 0.7,
-          responseMimeType: 'application/json'
-        }
-      });
-      activeFallback = genAI.getGenerativeModel({
-        model: 'gemini-2.5-flash-lite',
-        generationConfig: {
-          temperature: 0.7,
-          responseMimeType: 'application/json'
-        }
-      });
-    } catch (e) {
-      console.warn('Failed to configure JSON model, falling back to standard models:', e.message);
-    }
-  }
-
-  // 3. Execute prompt
   try {
-    console.log(`🚀 Calling Gemini API (json=${json}, raw=${raw}) for Prompt...`);
-    const result = await activeModel.generateContent(prompt);
-    const response = await result.response;
-    const answer = response.text().trim();
-
+    const result = await aiService.generateContent(prompt, { json });
     return res.json({
       success: true,
-      answer,
-      source: json ? 'gemini-flash-json' : 'gemini-flash',
+      answer: result.answer,
+      source: result.source,
     });
   } catch (error) {
-    console.warn('⚠️ Primary Gemini model failed/exhausted:', error.message);
-
-    if (activeFallback) {
-      console.log('🔄 Switching to backup model...');
-      try {
-        const result = await activeFallback.generateContent(prompt);
-        const response = await result.response;
-        const answer = response.text().trim();
-
-        return res.json({
-          success: true,
-          answer,
-          source: json ? 'gemini-flash-lite-json' : 'gemini-flash-lite',
-        });
-      } catch (fallbackError) {
-        console.error('❌ Gemini fallback model also failed:', fallbackError);
-        return res.status(500).json({ success: false, error: 'All AI models failed to respond' });
-      }
-    }
-
+    console.error('❌ askTutor failed:', error);
     return res.status(500).json({ success: false, error: error.message || 'AI request failed' });
   }
 };
@@ -170,12 +65,6 @@ export const askRAG = async (req, res) => {
     return res.status(400).json({ success: false, error: 'Please provide question and documentId' });
   }
 
-  initGemini();
-
-  if (!primaryModel) {
-    return res.status(500).json({ success: false, error: 'Gemini AI service is not initialized on the server.' });
-  }
-
   // 1. Fetch document name for prompt personalization
   let docName = 'Document';
   try {
@@ -187,16 +76,10 @@ export const askRAG = async (req, res) => {
     console.warn('Could not retrieve document name:', err.message);
   }
 
-  // 2. Generate vector embedding for the query using Gemini embedding API
+  // 2. Generate vector embedding for the query using embeddingService
   let relevantChunks = [];
   try {
-    const embedModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
-    console.log(`🚀 Generating query embedding for question: "${question}"`);
-    const embeddingResult = await embedModel.embedContent({
-      content: { parts: [{ text: question }] },
-      outputDimensionality: 768
-    });
-    const queryVector = embeddingResult.embedding.values;
+    const queryVector = await embeddingService.generateEmbedding(question);
 
     // 3. Query MongoDB Atlas Vector Search
     console.log(`🔍 Querying MongoDB Atlas Vector Search for docId: ${documentId}`);
@@ -268,46 +151,14 @@ export const askRAG = async (req, res) => {
   prompt += `## Student's Question\n${question}\n\n`;
   prompt += `## Your Answer (use markdown formatting)\n`;
 
-  // Set Server-Sent Events headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
+  // 5. Delegate streaming to aiService
   try {
-    console.log('🚀 Calling Gemini API (Primary: 2.5-flash) for streaming RAG Tutor...');
-    const result = await primaryModel.generateContentStream(prompt);
-
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+    await aiService.streamContent(res, prompt);
+  } catch (streamError) {
+    console.error('❌ Streaming RAG failed:', streamError);
+    if (!res.headersSent) {
+      res.status(500).json({ success: false, error: 'Failed to stream response' });
     }
-
-    res.write('data: [DONE]\n\n');
-    return res.end();
-  } catch (error) {
-    console.warn('⚠️ Primary Gemini model failed/exceeded quota in streaming RAG:', error.message);
-
-    if (fallbackModel) {
-      console.log('🔄 Switching to backup model (Gemini 2.5 Flash-Lite) for streaming RAG...');
-      try {
-        const result = await fallbackModel.generateContentStream(prompt);
-
-        for await (const chunk of result.stream) {
-          const chunkText = chunk.text();
-          res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
-        }
-
-        res.write('data: [DONE]\n\n');
-        return res.end();
-      } catch (fallbackError) {
-        console.error('❌ Gemini fallback model failed for streaming RAG:', fallbackError);
-        res.write(`data: ${JSON.stringify({ error: 'All AI models failed to respond' })}\n\n`);
-        return res.end();
-      }
-    }
-
-    res.write(`data: ${JSON.stringify({ error: error.message || 'AI request failed' })}\n\n`);
-    return res.end();
   }
 };
 
@@ -323,40 +174,23 @@ export const generateEmbeddings = async (req, res) => {
     return res.status(400).json({ success: false, error: 'Please provide texts array or text string' });
   }
 
-  initGemini();
-
-  if (!genAI) {
-    return res.status(500).json({ success: false, error: 'Gemini AI service is not initialized on the server.' });
-  }
-
   try {
-    const embedModel = genAI.getGenerativeModel({ model: 'text-embedding-004' });
-    
     if (text) {
-      console.log('🚀 Generating single query embedding server-side...');
-      const result = await embedModel.embedContent(text);
+      const embedding = await embeddingService.generateEmbedding(text);
       return res.json({
         success: true,
-        embedding: result.embedding.values,
+        embedding,
       });
     }
 
-    console.log(`🚀 Batch generating ${texts.length} embeddings server-side...`);
-    const result = await embedModel.batchEmbedContents({
-      requests: texts.map((t) => ({
-        content: { parts: [{ text: t }] },
-        model: 'models/text-embedding-004',
-      })),
-    });
-
-    const embeddings = result.embeddings.map((e) => e.values);
-
+    const embeddings = await embeddingService.generateEmbeddingsBatch(texts);
     return res.json({
       success: true,
       embeddings,
     });
   } catch (error) {
-    console.error('❌ Embedding generation failed:', error);
-    return res.status(500).json({ success: false, error: error.message || 'Embedding generation failed' });
+    console.error('❌ generateEmbeddings failed:', error);
+    return res.status(500).json({ success: false, error: error.message || 'AI request failed' });
   }
 };
+
