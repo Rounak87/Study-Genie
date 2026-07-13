@@ -3,6 +3,7 @@ import Document from '../models/Document.js';
 import DocumentChunk from '../models/DocumentChunk.js';
 import * as aiService from '../services/aiService.js';
 import * as embeddingService from '../services/embeddingService.js';
+import * as dktService from '../services/dktService.js';
 
 /**
  * @desc    Get general AI Tutor assistance
@@ -191,6 +192,30 @@ export const generateEmbeddings = async (req, res) => {
   } catch (error) {
     console.error('❌ generateEmbeddings failed:', error);
     return res.status(500).json({ success: false, error: error.message || 'AI request failed' });
+  }
+};
+
+/**
+ * @desc    Get Deep Knowledge Tracing mastery prediction
+ * @route   POST /api/ai/dkt-predict
+ * @access  Private
+ */
+export const getDKTPrediction = async (req, res) => {
+  const { interactions } = req.body;
+
+  if (!interactions || !Array.isArray(interactions)) {
+    return res.status(400).json({ success: false, error: 'Please provide interactions array' });
+  }
+
+  try {
+    const prediction = await dktService.getPrediction(interactions);
+    return res.json({
+      success: true,
+      prediction
+    });
+  } catch (error) {
+    console.error('❌ getDKTPrediction failed:', error);
+    return res.status(500).json({ success: false, error: error.message || 'DKT prediction failed' });
   }
 };
 
