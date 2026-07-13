@@ -231,6 +231,35 @@ class RagTutorService {
   }
 
   /**
+   * Send quiz interactions to get the PyTorch DKT mastery model prediction.
+   *
+   * @param {Array} interactions - [{ is_correct, time_taken, attempt_count, hint_count }]
+   * @returns {Promise<object>} - PyTorch DKT prediction results
+   */
+  async getDKTMasteryPrediction(interactions) {
+    try {
+      const token = localStorage.getItem("studygenie_token");
+      console.log("📡 Sending quiz interactions to server for DKT prediction...");
+      const response = await axios.post(`${API_URL}/ai/dkt-predict`, {
+        interactions
+      }, {
+        headers: {
+          Authorization: token ? `Bearer ${token}` : ""
+        }
+      });
+
+      if (response.data && response.data.success) {
+        return response.data.prediction;
+      } else {
+        throw new Error(response.data.error || "Failed to retrieve prediction from server");
+      }
+    } catch (error) {
+      console.error("DKT Prediction Request Error:", error);
+      throw new Error(error.response?.data?.error || error.message || "Failed to get DKT prediction");
+    }
+  }
+
+  /**
    * Reset conversation history (e.g., when switching documents).
    */
   resetConversation() {

@@ -67,6 +67,18 @@ const StudyGuide = () => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
 
+  // DKT Quiz Analytics States
+  const [quizStarted, setQuizStarted] = useState(false);
+  const [startTime, setStartTime] = useState(null);
+  const [attemptsCount, setAttemptsCount] = useState(0);
+  const [hintsCount, setHintsCount] = useState(0);
+  const [showHint, setShowHint] = useState(false);
+  const [interactionsList, setInteractionsList] = useState([]);
+  const [showMastery, setShowMastery] = useState(false);
+  const [masteryData, setMasteryData] = useState(null);
+  const [isLoadingMastery, setIsLoadingMastery] = useState(false);
+  const [wrongConcepts, setWrongConcepts] = useState([]);
+
   // QnA State
   const [qnaHistory, setQnaHistory] = useState([]);
   const [currentQuestion, setCurrentQuestion] = useState("");
@@ -173,6 +185,14 @@ const StudyGuide = () => {
     setQnaHistory([]);
     setCurrentQuestion("");
     ragTutorService.resetConversation();
+    setQuizStarted(false);
+    setShowMastery(false);
+    setMasteryData(null);
+    setInteractionsList([]);
+    setAttemptsCount(0);
+    setHintsCount(0);
+    setShowHint(false);
+    setWrongConcepts([]);
 
     try {
       let textToUse = docObj.textContent;
@@ -265,6 +285,14 @@ const StudyGuide = () => {
       setQnaHistory([]);
       setCurrentQuestion("");
       ragTutorService.resetConversation();
+      setQuizStarted(false);
+      setShowMastery(false);
+      setMasteryData(null);
+      setInteractionsList([]);
+      setAttemptsCount(0);
+      setHintsCount(0);
+      setShowHint(false);
+      setWrongConcepts([]);
 
       try {
         const storeResult = await documentStorage.storeDocument(
@@ -373,25 +401,99 @@ const StudyGuide = () => {
     maxSize: 50 * 1024 * 1024,
   });
 
+  const startQuiz = () => {
+    setQuizStarted(true);
+    setShowMastery(false);
+    setMasteryData(null);
+    setScore({ correct: 0, total: 0 });
+    setCurrentQuestionIndex(0);
+    setInteractionsList([]);
+    setStartTime(Date.now());
+    setAttemptsCount(0);
+    setHintsCount(0);
+    setShowHint(false);
+    setSelectedAnswer(null);
+    setShowAnswer(false);
+    setWrongConcepts([]);
+  };
+
+  const retakeQuiz = () => {
+    startQuiz();
+  };
+
+  const submitQuizResults = async (finalInteractions) => {
+    setIsLoadingMastery(true);
+    try {
+      const prediction = await ragTutorService.getDKTMasteryPrediction(finalInteractions);
+      setMasteryData(prediction);
+      setShowMastery(true);
+    } catch (err) {
+      console.error(err);
+      alert("Failed to evaluate mastery level: " + err.message);
+    } finally {
+      setIsLoadingMastery(false);
+    }
+  };
+
   const handleAnswerSubmit = () => {
     if (selectedAnswer !== null && studyMaterials.questions.length > 0) {
       const currentQ = studyMaterials.questions[currentQuestionIndex];
       const isCorrect = selectedAnswer === currentQ.correctAnswer;
+      
       setScore((prev) => ({
         correct: prev.correct + (isCorrect ? 1 : 0),
         total: prev.total + 1,
       }));
+
+      // Calculate response speed metrics
+      const elapsedSeconds = Math.round((Date.now() - startTime) / 1000);
+      const timeTaken = Math.min(elapsedSeconds, 60); // Cap at 60s
+      
+      const newInteraction = {
+        is_correct: isCorrect ? 1 : 0,
+        time_taken: timeTaken,
+        attempt_count: Math.max(attemptsCount, 1),
+        hint_count: hintsCount
+      };
+
+      setInteractionsList((prev) => [...prev, newInteraction]);
       setShowAnswer(true);
     }
   };
 
   const nextQuestion = () => {
+    const isLastQuestion = currentQuestionIndex >= studyMaterials.questions.length - 1;
+    
     setSelectedAnswer(null);
     setShowAnswer(false);
+    setShowHint(false);
+    setAttemptsCount(0);
+    setHintsCount(0);
+
     if (studyMaterials.questions.length > 0) {
-      setCurrentQuestionIndex((prev) =>
-        prev < studyMaterials.questions.length - 1 ? prev + 1 : 0,
-      );
+      if (isLastQuestion) {
+        // Compile incorrect concepts to review
+        const reviewList = [];
+        interactionsList.forEach((interaction, idx) => {
+          if (interaction.is_correct === 0) {
+            const questionObj = studyMaterials.questions[idx];
+            if (questionObj) {
+              const explanation = questionObj.explanation || "";
+              const firstSentence = explanation.split(/[.!?]/)[0] || "Review this concept.";
+              reviewList.push({
+                question: questionObj.question,
+                concept: firstSentence.trim() + "."
+              });
+            }
+          }
+        });
+        setWrongConcepts(reviewList);
+
+        submitQuizResults(interactionsList);
+      } else {
+        setCurrentQuestionIndex((prev) => prev + 1);
+        setStartTime(Date.now());
+      }
     }
   };
 
@@ -852,15 +954,178 @@ const StudyGuide = () => {
                       className="flex-1 overflow-y-auto custom-scrollbar h-full pr-4 pb-8"
                     >
                       {(() => {
-                        if (!studyMaterials?.questions?.length)
+                        if (!studyMaterials?.questions?.length) {
                           return (
                             <p className="text-center text-gray-400 py-12 text-xl">
                               No questions generated yet. Try re-uploading the
                               document.
                             </p>
                           );
-                        const currentQ =
-                          studyMaterials.questions[currentQuestionIndex];
+                        }
+
+                        // State 1: Quiz Loader
+                        if (isLoadingMastery) {
+                          return (
+                            <div className="flex flex-col items-center justify-center text-center p-12 max-w-2xl mx-auto my-auto h-full justify-center">
+                              <div className="w-20 h-20 mb-8 relative">
+                                <div className="absolute inset-0 border-4 border-blue-500/20 rounded-full"></div>
+                                <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+                                <SparklesIcon className="w-10 h-10 text-blue-400 absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2" />
+                              </div>
+                              <h2 className="text-2xl font-bold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                                Calculating Mastery Roadmap...
+                              </h2>
+                              <p className="text-gray-400">
+                                Our PyTorch LSTM Model is assessing your response patterns.
+                              </p>
+                            </div>
+                          );
+                        }
+
+                        // State 2: Mastery Dashboard Results
+                        if (showMastery && masteryData) {
+                          const percentage = Math.round(masteryData.mastery_probability * 100);
+                          
+                          let difficultyBadge = "bg-green-500/20 text-green-400 border-green-500/30";
+                          if (masteryData.suggested_difficulty === "easy") {
+                            difficultyBadge = "bg-red-500/20 text-red-400 border-red-500/30";
+                          } else if (masteryData.suggested_difficulty === "medium") {
+                            difficultyBadge = "bg-amber-500/20 text-amber-400 border-amber-500/30";
+                          }
+
+                          return (
+                            <div className="max-w-4xl mx-auto h-full flex flex-col overflow-y-auto custom-scrollbar pr-2 pb-10">
+                              <div className="text-center mb-10 shrink-0">
+                                <h2 className="text-3xl font-extrabold text-white mb-2">
+                                  Knowledge Mastery Assessment
+                                </h2>
+                                <p className="text-gray-400">Powered by PyTorch Deep Knowledge Tracing</p>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-10 shrink-0">
+                                {/* Score Card */}
+                                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center backdrop-blur-md">
+                                  <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider mb-2">Quiz Score</span>
+                                  <span className="text-4xl font-extrabold text-blue-400 mb-1">{score.correct} / {score.total}</span>
+                                  <span className="text-xs text-gray-500">Correct answers</span>
+                                </div>
+
+                                {/* Mastery Gauge */}
+                                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center backdrop-blur-md relative overflow-hidden">
+                                  <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider mb-2">Mastery Level</span>
+                                  <span className="text-4xl font-extrabold text-purple-400 mb-1">{percentage}%</span>
+                                  <div className="w-full bg-white/10 h-2 rounded-full overflow-hidden mt-2">
+                                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{ width: `${percentage}%` }}></div>
+                                  </div>
+                                </div>
+
+                                {/* Recommended Difficulty */}
+                                <div className="bg-white/5 border border-white/10 rounded-3xl p-6 flex flex-col items-center justify-center text-center backdrop-blur-md">
+                                  <span className="text-gray-400 text-sm font-semibold uppercase tracking-wider mb-2">Recommendation</span>
+                                  <span className={`px-4 py-1.5 rounded-full text-sm font-bold border ${difficultyBadge} mt-1 mb-2 capitalize`}>
+                                    {masteryData.suggested_difficulty} Path
+                                  </span>
+                                  <span className="text-xs text-gray-500">Suggested study track</span>
+                                </div>
+                              </div>
+
+                              <div className="bg-white/5 border border-white/10 rounded-3xl p-8 mb-10 backdrop-blur-md shrink-0">
+                                <h3 className="text-xl font-bold mb-4 flex items-center text-blue-400">
+                                  <SparklesIcon className="w-6 h-6 mr-2" />
+                                  Model Assessment
+                                </h3>
+                                <p className="text-gray-300 leading-relaxed text-lg">
+                                  {masteryData.detail}
+                                </p>
+                              </div>
+
+                              {/* Wrong Concepts Card */}
+                              {wrongConcepts.length > 0 && (
+                                <div className="bg-white/5 border border-white/10 rounded-3xl p-8 mb-10 backdrop-blur-md shrink-0">
+                                  <h3 className="text-xl font-bold mb-4 flex items-center text-red-400">
+                                    <XCircleIcon className="w-6 h-6 mr-2" />
+                                    Targeted Concepts to Review
+                                  </h3>
+                                  <p className="text-gray-400 mb-6 text-base">
+                                    Based on your quiz performance, we recommend reviewing these specific topics:
+                                  </p>
+                                  <div className="space-y-4">
+                                    {wrongConcepts.map((item, idx) => (
+                                      <div key={idx} className="flex items-start bg-red-500/5 border border-red-500/10 rounded-2xl p-5">
+                                        <div className="w-6 h-6 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-xs mr-4 shrink-0 mt-0.5">
+                                          {idx + 1}
+                                        </div>
+                                        <div className="flex-1">
+                                          <p className="text-white font-semibold text-lg leading-snug">{item.question}</p>
+                                          <p className="text-gray-300 text-base mt-2 flex items-start gap-1.5">
+                                            <span className="text-red-400 font-bold shrink-0">💡 Topic to revise:</span>
+                                            <span className="text-red-100/90 font-medium">{item.concept}</span>
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Recommended Roadmap */}
+                              <div className="bg-white/5 border border-white/10 rounded-3xl p-8 mb-10 backdrop-blur-md">
+                                <h3 className="text-xl font-bold mb-6 text-purple-400 flex items-center">
+                                  <ClockIcon className="w-6 h-6 mr-2" />
+                                  Your Personalized Learning Roadmap
+                                </h3>
+                                <div className="relative pl-8 border-l border-white/10 space-y-8">
+                                  {masteryData.learning_path.map((step, idx) => (
+                                    <div key={idx} className="relative">
+                                      <div className="absolute -left-[45px] top-1 bg-blue-600 w-8 h-8 rounded-full border-4 border-[#16171d] flex items-center justify-center text-white text-xs font-bold shadow-lg">
+                                        {step.step}
+                                      </div>
+                                      <div>
+                                        <h4 className="font-extrabold text-white text-lg flex items-center gap-2">
+                                          {step.action}
+                                        </h4>
+                                        <p className="text-gray-400 mt-1 leading-relaxed">{step.description}</p>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              <div className="flex justify-center mt-4">
+                                <button
+                                  onClick={retakeQuiz}
+                                  className="px-10 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full font-bold text-xl hover:from-blue-600 hover:to-purple-600 transition-all duration-300 shadow-lg shadow-blue-500/40 hover:scale-105"
+                                >
+                                  Retake Quiz
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
+                        // State 3: Quiz Landing Card
+                        if (!quizStarted) {
+                          return (
+                            <div className="flex flex-col items-center justify-center text-center p-12 max-w-2xl mx-auto my-auto h-full justify-center">
+                              <AcademicCapIcon className="w-20 h-20 text-blue-400 mb-6 animate-bounce" />
+                              <h2 className="text-3xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-400">
+                                Ready to test your Knowledge?
+                              </h2>
+                              <p className="text-lg text-gray-300 mb-8 leading-relaxed">
+                                This quiz contains exactly {studyMaterials.questions.length} questions. Our PyTorch Deep Knowledge Tracing engine will analyze your answers, response times, attempts, and hint requests in the background to build your personalized mastery roadmap!
+                              </p>
+                              <button
+                                onClick={startQuiz}
+                                className="px-10 py-4 bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600 text-white rounded-full font-bold text-xl transition-all duration-300 shadow-lg shadow-blue-500/40 hover:scale-105"
+                              >
+                                Start Quiz
+                              </button>
+                            </div>
+                          );
+                        }
+
+                        // State 4: Active Question Rendering
+                        const currentQ = studyMaterials.questions[currentQuestionIndex];
                         return (
                           <div className="max-w-4xl mx-auto h-full flex flex-col">
                             <div className="flex justify-between items-center mb-10 pb-6 border-b border-white/10 shrink-0">
@@ -882,9 +1147,32 @@ const StudyGuide = () => {
                             </div>
 
                             <div className="flex-1 overflow-y-auto custom-scrollbar pr-4">
-                              <h3 className="text-3xl font-semibold mb-10 text-white leading-tight">
-                                {currentQ.question}
-                              </h3>
+                              <div className="flex items-start justify-between mb-8 gap-4">
+                                <h3 className="text-3xl font-semibold text-white leading-tight flex-1">
+                                  {currentQ.question}
+                                </h3>
+                                <button
+                                  disabled={showAnswer}
+                                  onClick={() => {
+                                    setShowHint((prev) => !prev);
+                                    setHintsCount((prev) => prev + 1);
+                                  }}
+                                  className="px-4 py-2 bg-purple-500/10 text-purple-400 hover:bg-purple-500/20 border border-purple-500/30 rounded-xl transition flex items-center text-sm font-semibold shrink-0"
+                                >
+                                  <LightBulbIcon className="w-4 h-4 mr-1.5" />
+                                  {showHint ? "Hide Hint" : "Get Hint"}
+                                </button>
+                              </div>
+
+                              {showHint && currentQ.explanation && (
+                                <motion.div
+                                  initial={{ opacity: 0, y: -10 }}
+                                  animate={{ opacity: 1, y: 0 }}
+                                  className="p-5 bg-purple-500/5 border border-purple-500/20 rounded-2xl mb-8 text-purple-200 text-sm leading-relaxed"
+                                >
+                                  <strong>💡 Hint:</strong> {currentQ.explanation.split('.')[0]}. Think about the core definition.
+                                </motion.div>
+                              )}
 
                               <div className="space-y-4 mb-10">
                                 {currentQ.options.map((option, index) => {
@@ -910,7 +1198,10 @@ const StudyGuide = () => {
                                     <button
                                       key={index}
                                       disabled={showAnswer}
-                                      onClick={() => setSelectedAnswer(index)}
+                                      onClick={() => {
+                                        setSelectedAnswer(index);
+                                        setAttemptsCount((prev) => prev + 1);
+                                      }}
                                       className={`w-full p-6 text-left rounded-2xl border-2 transition-all duration-300 flex items-center ${btnStyles}`}
                                     >
                                       <div
@@ -965,10 +1256,9 @@ const StudyGuide = () => {
                                   onClick={nextQuestion}
                                   className="px-10 py-4 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-full font-bold text-xl hover:from-blue-600 hover:to-purple-600 transition-all duration-300 shadow-lg shadow-blue-500/40 hover:scale-105"
                                 >
-                                  {currentQuestionIndex <
-                                  studyMaterials.questions.length - 1
+                                  {currentQuestionIndex < studyMaterials.questions.length - 1
                                     ? "Next Question"
-                                    : "Start Over"}
+                                    : "View Mastery Roadmap"}
                                 </button>
                               )}
                             </div>
