@@ -6,7 +6,7 @@ import * as embeddingService from './services/embeddingService.js';
 import { parseDocumentBuffer } from './utils/documentParser.js';
 import Document from './models/Document.js';
 import DocumentChunk from './models/DocumentChunk.js';
-import { redisConnection } from './utils/queue.js';
+import { createWorkerConnection } from './utils/queue.js';
 
 // Helper delay sleep function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,7 +51,8 @@ function chunkText(text, maxChunks = 4) {
 
 // Worker logic wrapped in a startup check
 const startWorker = () => {
-  if (!redisConnection) {
+  const workerConnection = createWorkerConnection();
+  if (!workerConnection) {
     console.error('❌ Cannot start BullMQ Worker: Redis connection is not initialized.');
     return;
   }
@@ -127,7 +128,7 @@ const startWorker = () => {
       throw error; // Let BullMQ handle retry mechanism
     }
   }, { 
-    connection: redisConnection,
+    connection: workerConnection,
     concurrency: 2 // Allow processing up to 2 documents concurrently
   });
 
@@ -136,7 +137,11 @@ const startWorker = () => {
   });
 
   worker.on('error', (err) => {
-    console.error('❌ Worker connection error:', err);
+    if (err.message && err.message.includes('ECONNRESET')) {
+      // Silent ignore transient connection resets from Upstash idle timeouts
+    } else {
+      console.error('❌ Worker connection error:', err.message || err);
+    }
   });
 };
 
