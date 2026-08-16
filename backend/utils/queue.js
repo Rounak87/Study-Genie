@@ -8,23 +8,45 @@ if (!redisUrl) {
   console.warn('⚠️ Missing REDIS_URL in environment. Background queues will fail to initialize.');
 }
 
-// ioredis client configuration
-export const redisConnection = redisUrl 
-  ? new Redis(redisUrl, {
-      maxRetriesPerRequest: null, // MANDATORY requirement for BullMQ
-      // Automatically enforce TLS for secure cloud hosting (Upstash/Redislabs)
-      tls: (redisUrl.startsWith('rediss://') || redisUrl.includes('upstash.io')) ? { rejectUnauthorized: false } : undefined,
-    })
-  : null;
+// Helper to create a new Redis connection instance
+const createRedisConnection = () => {
+  return redisUrl 
+    ? new Redis(redisUrl, {
+        maxRetriesPerRequest: null, // MANDATORY requirement for BullMQ
+        // Enforce TLS only if explicitly requested using secure rediss:// protocol
+        tls: redisUrl.startsWith('rediss://') ? { rejectUnauthorized: false } : undefined,
+        keepAlive: 10000, // Send TCP keep-alive packets every 10s to prevent Upstash from closing idle sockets
+      })
+    : null;
+};
+
+// Dedicated connection for Queue operations
+export const redisConnection = createRedisConnection();
 
 if (redisConnection) {
-  redisConnection.on('connect', () => {
-    console.log('✅ Connected to Upstash Redis for BullMQ');
-  });
   redisConnection.on('error', (err) => {
-    console.error('❌ Redis connection error:', err.message);
+    if (err.message && err.message.includes('ECONNRESET')) {
+      // Silent ignore transient connection resets from Upstash idle timeouts
+    } else {
+      console.error('❌ Redis connection error:', err.message);
+    }
   });
 }
+
+// Dedicated connection builder for Worker operations (preventing socket sharing)
+export const createWorkerConnection = () => {
+  const conn = createRedisConnection();
+  if (conn) {
+    conn.on('error', (err) => {
+      if (err.message && err.message.includes('ECONNRESET')) {
+        // Silent ignore transient connection resets from Upstash idle timeouts
+      } else {
+        console.error('❌ Worker connection error:', err.message);
+      }
+    });
+  }
+  return conn;
+};
 
 // Create Queue named 'document-processing'
 export const documentQueue = redisConnection 
@@ -41,6 +63,16 @@ export const documentQueue = redisConnection
       }
     })
   : null;
+
+if (documentQueue) {
+  documentQueue.on('error', (err) => {
+    if (err.message && err.message.includes('ECONNRESET')) {
+      // Silent ignore transient connection resets from Upstash idle timeouts
+    } else {
+      console.error('❌ DocumentQueue error:', err.message || err);
+    }
+  });
+}
 
 /**
  * Add a job to the queue to parse and index a document
